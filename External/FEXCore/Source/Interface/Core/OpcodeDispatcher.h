@@ -847,6 +847,7 @@ private:
   }
 
   OrderedNode* CachedNZCV = {};
+  uint32_t PossiblySetNZCVBits = 0;
 
   fextl::map<uint64_t, JumpTargetInfo> JumpTargets;
   bool HandledLock{false};
@@ -1068,8 +1069,12 @@ private:
   OrderedNode *GetNZCV() {
     // We put the packed NZCV in the "N" register, SF.
     // TODO: Use the real architectural flags register here.
-    if (!CachedNZCV)
+    if (!CachedNZCV) {
       CachedNZCV = _LoadFlag(FEXCore::X86State::RFLAG_SF_LOC);
+
+      // We don't know what's set
+      PossiblySetNZCVBits = ~0;
+    }
 
     return CachedNZCV;
   }
@@ -1078,8 +1083,37 @@ private:
     CachedNZCV = Value;
   }
 
+  void InvalidateNZCV() {
+    CachedNZCV = _Constant(0);
+    PossiblySetNZCVBits = 0;
+  }
+
+  void SetNZeroZCV(unsigned SrcSize, OrderedNode *Res) {
+    assert(IndexNZCV(FEXCore::X86State::RFLAG_SF_LOC) == 31);
+
+    unsigned SignBit = (SrcSize * 8) - 1;
+
+    if (SrcSize > 31)
+      Res = _Ashr(Res, _Constant(SignBit - 31));
+    else if (SrcSize < 31)
+      Res = _Lshl(Res, _Constant(31 - SignBit));
+
+    CachedNZCV = _And(Res, _Constant(1u << 31));
+    PossiblySetNZCVBits = (1u << 31);
+  }
+
   OrderedNode *InsertNZCV(OrderedNode *NZCV, unsigned BitOffset, OrderedNode *Value) {
-    return _Bfi(4, 1, IndexNZCV(BitOffset), NZCV, Value);
+    unsigned Bit = IndexNZCV(BitOffset);
+
+    uint32_t SetBits = PossiblySetNZCVBits;
+    PossiblySetNZCVBits |= (1 << Bit);
+
+    if (SetBits == 0)
+      return _Lshl(Value, _Constant(Bit));
+    else if ((SetBits & (1 << Bit)) == 0)
+      return _Orlshl(NZCV, Value, Bit);
+    else
+      return _Bfi(4, 1, Bit, NZCV, Value);
   }
 
   void SetRFLAG(OrderedNode *Value, unsigned BitOffset) {

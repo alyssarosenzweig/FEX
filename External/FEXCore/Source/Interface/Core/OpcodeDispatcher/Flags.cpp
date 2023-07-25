@@ -332,13 +332,10 @@ void OpDispatchBuilder::CalculateFlags_ADC(uint8_t SrcSize, OrderedNode *Res, Or
     SetRFLAG<FEXCore::X86State::RFLAG_AF_LOC>(AFRes);
   }
 
-  // SF
-  {
-    auto SignOp = _Bfe(1, SrcSize * 8 - 1, Res);
-    SetRFLAG<FEXCore::X86State::RFLAG_SF_LOC>(SignOp);
-  }
-
   CalculatePF(Res);
+
+  // SF
+  SetNZeroZCV(SrcSize, Res);
 
   // ZF
   {
@@ -371,13 +368,10 @@ void OpDispatchBuilder::CalculateFlags_SBB(uint8_t SrcSize, OrderedNode *Res, Or
     SetRFLAG<FEXCore::X86State::RFLAG_AF_LOC>(AFRes);
   }
 
-  // SF
-  {
-    auto SignOp = _Bfe(1, SrcSize * 8 - 1, Res);
-    SetRFLAG<FEXCore::X86State::RFLAG_SF_LOC>(SignOp);
-  }
-
   CalculatePF(Res);
+
+  // SF
+  SetNZeroZCV(SrcSize, Res);
 
   // ZF
   {
@@ -417,12 +411,6 @@ void OpDispatchBuilder::CalculateFlags_SUB(uint8_t SrcSize, OrderedNode *Res, Or
     SetRFLAG<FEXCore::X86State::RFLAG_AF_LOC>(AFRes);
   }
 
-  // SF
-  {
-    auto SignOp = _Bfe(1, SrcSize * 8 - 1, Res);
-    SetRFLAG<FEXCore::X86State::RFLAG_SF_LOC>(SignOp);
-  }
-
   CalculatePF(Res);
 
   // ZF
@@ -431,6 +419,9 @@ void OpDispatchBuilder::CalculateFlags_SUB(uint8_t SrcSize, OrderedNode *Res, Or
         Res, Zero, One, Zero);
     SetRFLAG<FEXCore::X86State::RFLAG_ZF_LOC>(SelectOp);
   }
+
+  // SF
+  SetNZeroZCV(SrcSize, Res);
 
   // CF
   if (UpdateCF) {
@@ -462,13 +453,10 @@ void OpDispatchBuilder::CalculateFlags_ADD(uint8_t SrcSize, OrderedNode *Res, Or
     SetRFLAG<FEXCore::X86State::RFLAG_AF_LOC>(AFRes);
   }
 
-  // SF
-  {
-    auto SignOp = _Bfe(1, SrcSize * 8 - 1, Res);
-    SetRFLAG<FEXCore::X86State::RFLAG_SF_LOC>(SignOp);
-  }
-
   CalculatePF(Res);
+
+  // SF
+  SetNZeroZCV(SrcSize, Res);
 
   // ZF
   {
@@ -539,6 +527,7 @@ void OpDispatchBuilder::CalculateFlags_UMUL(OrderedNode *High) {
 }
 
 void OpDispatchBuilder::CalculateFlags_Logical(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2) {
+
   auto Zero = _Constant(0);
   auto One = _Constant(1);
   // AF
@@ -548,25 +537,16 @@ void OpDispatchBuilder::CalculateFlags_Logical(uint8_t SrcSize, OrderedNode *Res
     SetRFLAG<FEXCore::X86State::RFLAG_AF_LOC>(Zero);
   }
 
-  // SF
-  {
-    auto SignOp = _Bfe(1, SrcSize * 8 - 1, Res);
-    SetRFLAG<FEXCore::X86State::RFLAG_SF_LOC>(SignOp);
-  }
-
   CalculatePF(Res);
+
+  // SF/CF/OF
+  SetNZeroZCV(SrcSize, Res);
 
   // ZF
   {
     auto SelectOp = _Select(FEXCore::IR::COND_EQ,
         Res, Zero, One, Zero);
     SetRFLAG<FEXCore::X86State::RFLAG_ZF_LOC>(SelectOp);
-  }
-
-  // CF/OF
-  {
-    SetRFLAG<FEXCore::X86State::RFLAG_CF_LOC>(Zero);
-    SetRFLAG<FEXCore::X86State::RFLAG_OF_LOC>(Zero);
   }
 }
 
