@@ -772,6 +772,10 @@
                 ],
         "DestSize": "std::max<uint8_t>(4, std::max(GetOpSize(_Src1), GetOpSize(_Src2)))"
       },
+      "GPR = AddNZCV u8:$Size, GPR:$Src1, GPR:$Src2": {
+        "Desc": [ "Integer Add, returning NZCV flag register"],
+        "DestSize": "4"
+      },
       "GPR = Sub GPR:$Src1, GPR:$Src2": {
         "Desc": [ "Integer Sub",
                   "Will truncate to 64 or 32bits"

@@ -484,22 +484,27 @@ void OpDispatchBuilder::CalculateFlags_ADD(uint8_t SrcSize, OrderedNode *Res, Or
 
   CalculatePF(Res);
 
-  // Stash CF before zeroing it
-  auto OldCF = GetRFLAG(FEXCore::X86State::RFLAG_CF_LOC);
-
-  // SF/ZF
-  SetNZ_ZeroCV(SrcSize, Res);
-
-  // CF
-  if (UpdateCF) {
-    auto SelectOp = _Select(FEXCore::IR::COND_ULT, Res, Src2, One, Zero);
-
-    SetRFLAG<FEXCore::X86State::RFLAG_CF_LOC>(SelectOp);
+  if (CTX->BackendFeatures.SupportsFlags && UpdateCF && SrcSize >= 4) {
+    CachedNZCV = _AddNZCV(SrcSize, Src1, Src2);
+    PossiblySetNZCVBits = ~0;
   } else {
-    SetRFLAG<FEXCore::X86State::RFLAG_CF_LOC>(OldCF);
-  }
+    // Stash CF before zeroing it
+    auto OldCF = GetRFLAG(FEXCore::X86State::RFLAG_CF_LOC);
 
-  CalculateOF_Add(SrcSize, Res, Src1, Src2);
+    // SF/ZF
+    SetNZ_ZeroCV(SrcSize, Res);
+
+    // CF
+    if (UpdateCF) {
+      auto SelectOp = _Select(FEXCore::IR::COND_ULT, Res, Src2, One, Zero);
+
+      SetRFLAG<FEXCore::X86State::RFLAG_CF_LOC>(SelectOp);
+    } else {
+      SetRFLAG<FEXCore::X86State::RFLAG_CF_LOC>(OldCF);
+    }
+
+    CalculateOF_Add(SrcSize, Res, Src1, Src2);
+  }
 }
 
 void OpDispatchBuilder::CalculateFlags_MUL(uint8_t SrcSize, OrderedNode *Res, OrderedNode *High) {

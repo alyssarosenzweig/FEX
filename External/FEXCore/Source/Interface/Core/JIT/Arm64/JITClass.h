@@ -231,6 +231,7 @@ private:
   DEF_OP(InlineEntrypointOffset);
   DEF_OP(CycleCounter);
   DEF_OP(Add);
+  DEF_OP(AddNZCV);
   DEF_OP(TestNZ);
   DEF_OP(Sub);
   DEF_OP(Neg);

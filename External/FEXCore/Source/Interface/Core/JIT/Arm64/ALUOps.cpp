@@ -84,6 +84,26 @@ DEF_OP(Add) {
   }
 }
 
+DEF_OP(AddNZCV) {
+  auto Op = IROp->C<IR::IROp_AddNZCV>();
+  const uint8_t OpSize = IROp->Size;
+
+  LOGMAN_THROW_AA_FMT(OpSize == 4 || OpSize == 8, "Unsupported {} size: {}", __func__, OpSize);
+  const auto EmitSize = OpSize == 8 ? ARMEmitter::Size::i64Bit : ARMEmitter::Size::i32Bit;
+
+  uint64_t Const;
+
+  if (IsInlineConstant(Op->Src2, &Const)) {
+    cmn(EmitSize, GetReg(Op->Src1.ID()), Const);
+  } else {
+    cmn(EmitSize, GetReg(Op->Src1.ID()), GetReg(Op->Src2.ID()));
+  }
+
+  // TODO: Optimize this out
+  const auto Dst = GetReg(Node);
+  mrs(Dst, ARMEmitter::SystemRegister::NZCV);
+}
+
 DEF_OP(TestNZ) {
   auto Op = IROp->C<IR::IROp_TestNZ>();
   const uint8_t OpSize = Op->Size;
