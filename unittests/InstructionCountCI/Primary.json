@@ -191,7 +191,7 @@
       ]
     },
     "add al, 1": {
-      "ExpectedInstructionCount": 18,
+      "ExpectedInstructionCount": 16,
       "Optimal": "No",
       "Comment": "0x04",
       "ExpectedArm64ASM": [
@@ -207,16 +207,14 @@
         "cmp w21, #0x1 (1)",
         "cset x23, lo",
         "orr w22, w22, w23, lsl #29",
-        "eor w23, w20, #0x1",
-        "eor w20, w21, w20",
-        "bic w20, w20, w23",
+        "bic w20, w21, w20",
         "ubfx w20, w20, #7, #1",
         "orr w20, w22, w20, lsl #28",
         "str w20, [x28, #728]"
       ]
     },
     "add ax, 1": {
-      "ExpectedInstructionCount": 18,
+      "ExpectedInstructionCount": 16,
       "Optimal": "No",
       "Comment": "0x05",
       "ExpectedArm64ASM": [
@@ -232,9 +230,7 @@
         "cmp w21, #0x1 (1)",
         "cset x23, lo",
         "orr w22, w22, w23, lsl #29",
-        "eor w23, w20, #0x1",
-        "eor w20, w21, w20",
-        "bic w20, w20, w23",
+        "bic w20, w21, w20",
         "ubfx w20, w20, #15, #1",
         "orr w20, w22, w20, lsl #28",
         "str w20, [x28, #728]"
@@ -722,7 +718,7 @@
       ]
     },
     "adc al, 1": {
-      "ExpectedInstructionCount": 26,
+      "ExpectedInstructionCount": 24,
       "Optimal": "No",
       "Comment": "0x14",
       "ExpectedArm64ASM": [
@@ -746,16 +742,14 @@
         "cmp x21, #0x1 (1)",
         "csel x21, x25, x24, eq",
         "orr w21, w23, w21, lsl #29",
-        "eor w23, w22, #0x1",
-        "eor w20, w20, w22",
-        "bic w20, w20, w23",
+        "bic w20, w20, w22",
         "ubfx w20, w20, #7, #1",
         "orr w20, w21, w20, lsl #28",
         "str w20, [x28, #728]"
       ]
     },
     "adc ax, 1": {
-      "ExpectedInstructionCount": 26,
+      "ExpectedInstructionCount": 24,
       "Optimal": "No",
       "Comment": "0x15",
       "ExpectedArm64ASM": [
@@ -779,16 +773,14 @@
         "cmp x21, #0x1 (1)",
         "csel x21, x25, x24, eq",
         "orr w21, w23, w21, lsl #29",
-        "eor w23, w22, #0x1",
-        "eor w20, w20, w22",
-        "bic w20, w20, w23",
+        "bic w20, w20, w22",
         "ubfx w20, w20, #15, #1",
         "orr w20, w21, w20, lsl #28",
         "str w20, [x28, #728]"
       ]
     },
     "adc eax, 1": {
-      "ExpectedInstructionCount": 23,
+      "ExpectedInstructionCount": 21,
       "Optimal": "No",
       "Comment": "0x15",
       "ExpectedArm64ASM": [
@@ -809,16 +801,14 @@
         "cmp x21, #0x1 (1)",
         "csel x21, x24, x23, eq",
         "orr w20, w20, w21, lsl #29",
-        "eor w21, w22, #0x1",
-        "eor w22, w4, w22",
-        "bic w21, w22, w21",
+        "bic w21, w4, w22",
         "lsr w21, w21, #31",
         "orr w20, w20, w21, lsl #28",
         "str w20, [x28, #728]"
       ]
     },
     "adc rax, 1": {
-      "ExpectedInstructionCount": 23,
+      "ExpectedInstructionCount": 21,
       "Optimal": "No",
       "Comment": "0x15",
       "ExpectedArm64ASM": [
@@ -839,9 +829,7 @@
         "cmp x21, #0x1 (1)",
         "csel x21, x24, x23, eq",
         "orr w20, w20, w21, lsl #29",
-        "eor x21, x22, #0x1",
-        "eor x22, x4, x22",
-        "bic x21, x22, x21",
+        "bic x21, x4, x22",
         "lsr x21, x21, #63",
         "orr w20, w20, w21, lsl #28",
         "str w20, [x28, #728]"
