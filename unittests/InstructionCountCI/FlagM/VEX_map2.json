@@ -164,61 +164,43 @@
       ]
     },
     "vptest xmm0, xmm1": {
-      "ExpectedInstructionCount": 17,
+      "ExpectedInstructionCount": 12,
       "Comment": [
         "Map 2 0b01 0x16 128-bit"
       ],
       "ExpectedArm64ASM": [
         "and v2.16b, v16.16b, v17.16b",
         "bic v3.16b, v17.16b, v16.16b",
-        "cnt v2.16b, v2.16b",
-        "cnt v3.16b, v3.16b",
-        "addv h2, v2.8h",
-        "addv h3, v3.8h",
+        "umaxv h2, v2.8h",
+        "umaxv h3, v3.8h",
         "umov w20, v2.h[0]",
         "umov w21, v3.h[0]",
         "mov w27, #0x0",
         "mov w26, #0x1",
-        "cmp x20, #0x0 (0)",
-        "cset x20, eq",
         "cmp x21, #0x0 (0)",
         "cset x21, eq",
-        "lsl x20, x20, #30",
-        "orr w20, w20, w21, lsl #29",
-        "msr nzcv, x20"
+        "tst w20, w20",
+        "rmif x21, #63, #NzCv"
       ]
     },
     "vptest ymm0, ymm1": {
-      "ExpectedInstructionCount": 25,
+      "ExpectedInstructionCount": 12,
       "Comment": [
         "Map 2 0b01 0x16 256-bit"
       ],
       "ExpectedArm64ASM": [
         "and z2.d, z16.d, z17.d",
         "bic z3.d, z17.d, z16.d",
-        "cnt z2.b, p7/m, z2.b",
-        "cnt z3.b, p7/m, z3.b",
-        "not p0.b, p7/z, p6.b",
-        "compact z0.d, p0, z2.d",
-        "addv h1, v2.8h",
-        "addv h0, v0.8h",
-        "add v2.8h, v0.8h, v1.8h",
-        "not p0.b, p7/z, p6.b",
-        "compact z0.d, p0, z3.d",
-        "addv h1, v3.8h",
-        "addv h0, v0.8h",
-        "add v3.8h, v0.8h, v1.8h",
+        "umaxv h2, p7, z2.h",
+        "umaxv h3, p7, z3.h",
         "umov w20, v2.h[0]",
         "umov w21, v3.h[0]",
         "mov w27, #0x0",
         "mov w26, #0x1",
-        "cmp x20, #0x0 (0)",
-        "cset x20, eq",
         "cmp x21, #0x0 (0)",
         "cset x21, eq",
-        "lsl x20, x20, #30",
-        "orr w20, w20, w21, lsl #29",
-        "msr nzcv, x20"
+        "tst w20, w20",
+        "rmif x21, #63, #NzCv"
       ]
     },
     "vmaskmovps xmm0, xmm1, [rax]": {
@@ -544,55 +526,45 @@
       ]
     },
     "bextr eax, ebx, ecx": {
-      "ExpectedInstructionCount": 19,
+      "ExpectedInstructionCount": 14,
       "Comment": [
         "Map 2 0b00 0xf7 32-bit"
       ],
       "ExpectedArm64ASM": [
         "mov w20, w7",
         "mov w21, w5",
-        "mov w22, #0x1f",
-        "uxtb w23, w21",
-        "lsr w20, w20, w23",
-        "mov w24, #0x0",
-        "cmp w23, #0x1f (31)",
-        "csel w20, w20, w24, ls",
+        "uxtb w22, w21",
+        "lsr w20, w20, w22",
+        "mov w23, #0x0",
+        "cmp w22, #0x1f (31)",
+        "csel w20, w20, w23, ls",
         "ubfx w21, w21, #8, #8",
+        "mov x22, #0xffffffffffffffff",
+        "lsl w22, w22, w21",
+        "bic w22, w20, w22",
         "cmp w21, #0x1f (31)",
-        "csel w21, w21, w22, ls",
-        "mov w22, #0x1",
-        "lsl w21, w22, w21",
-        "sub w21, w21, #0x1 (1)",
-        "and w4, w20, w21",
-        "cmp x4, #0x0 (0)",
-        "cset x20, eq",
-        "lsl x20, x20, #30",
-        "msr nzcv, x20"
+        "csel w4, w22, w20, ls",
+        "tst w4, w4"
       ]
     },
     "bextr rax, rbx, rcx": {
-      "ExpectedInstructionCount": 17,
+      "ExpectedInstructionCount": 12,
       "Comment": [
         "Map 2 0b00 0xf7 64-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov w20, #0x3f",
-        "uxtb x21, w5",
-        "lsr x22, x7, x21",
-        "mov w23, #0x0",
+        "uxtb x20, w5",
+        "lsr x21, x7, x20",
+        "mov w22, #0x0",
+        "cmp x20, #0x3f (63)",
+        "csel x20, x21, x22, ls",
+        "ubfx x21, x5, #8, #8",
+        "mov x22, #0xffffffffffffffff",
+        "lsl x22, x22, x21",
+        "bic x22, x20, x22",
         "cmp x21, #0x3f (63)",
-        "csel x21, x22, x23, ls",
-        "ubfx x22, x5, #8, #8",
-        "cmp x22, #0x3f (63)",
-        "csel x20, x22, x20, ls",
-        "mov w22, #0x1",
-        "lsl x20, x22, x20",
-        "sub x20, x20, #0x1 (1)",
-        "and x4, x21, x20",
-        "cmp x4, #0x0 (0)",
-        "cset x20, eq",
-        "lsl x20, x20, #30",
-        "msr nzcv, x20"
+        "csel x4, x22, x20, ls",
+        "tst x4, x4"
       ]
     }
   }
