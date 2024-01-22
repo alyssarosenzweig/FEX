@@ -1068,6 +1068,9 @@ void OpDispatchBuilder::CalculateFlags_BZHI(uint8_t SrcSize, OrderedNode *Result
 }
 
 void OpDispatchBuilder::CalculateFlags_TZCNT(OrderedNode *Src) {
+  // TODO: Can optimize this to bfi+rmif, by copying the bottom bit of Src (ZF)
+  // right next to the top bit of the result (CF) and then doing a single rmif.
+  //
   // OF, SF, AF, PF all undefined
   ZeroNZCV();
 
