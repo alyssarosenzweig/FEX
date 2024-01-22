@@ -4597,12 +4597,31 @@ void OpDispatchBuilder::PTestOp(OpcodeArgs) {
   // Careful, these flags are different between {V,}PTEST and VTESTP{S,D}
   // Set ZF according to Test1. This may inadvently set SF, so zero that.
   SetNZ_ZeroCV(32, Test1);
-  SetRFLAG<FEXCore::X86State::RFLAG_CF_RAW_LOC>(Test2);
+
+  if (!CTX->HostFeatures.SupportsFlagM) {
+    // Reference implementation
+    SetRFLAG<FEXCore::X86State::RFLAG_CF_RAW_LOC>(Test2);
+    SetRFLAG<FEXCore::X86State::RFLAG_SF_RAW_LOC>(ZeroConst);
+  } else {
+    // This implements the above logic in 1 fewer instruction. The trick is that
+    // we selected Test2 to 0/1, so every bit other than the first is zero. In
+    // particular, bit 2 is zero, so we can zero SF with the same rmif that we
+    // use to set CF.
+    if (NZCVDirty && CachedNZCV)
+      _StoreNZCV(CachedNZCV);
+
+    CachedNZCV = nullptr;
+    NZCVDirty = false;
+
+    // Rotate -1 to get bit 0 of Test2 in the carry, set flags NzCv
+    _RmifNZCV(Test2, 63, 0x2 | 0x8);
+    CachedNZCV = nullptr;
+    PossiblySetNZCVBits |= (1u << IndexNZCV(FEXCore::X86State::RFLAG_CF_RAW_LOC));
+  }
 
   uint32_t FlagsMaskToZero =
     (1U << X86State::RFLAG_PF_RAW_LOC) |
-    (1U << X86State::RFLAG_AF_RAW_LOC) |
-    (1U << X86State::RFLAG_SF_RAW_LOC);
+    (1U << X86State::RFLAG_AF_RAW_LOC);
 
   ZeroMultipleFlags(FlagsMaskToZero);
 }
