@@ -4591,20 +4591,18 @@ void OpDispatchBuilder::PTestOp(OpcodeArgs) {
   auto ZeroConst = _Constant(0);
   auto OneConst = _Constant(1);
 
-  Test1 = _Select(FEXCore::IR::COND_EQ,
-      Test1, ZeroConst, OneConst, ZeroConst);
-
   Test2 = _Select(FEXCore::IR::COND_EQ,
       Test2, ZeroConst, OneConst, ZeroConst);
 
   // Careful, these flags are different between {V,}PTEST and VTESTP{S,D}
-  ZeroNZCV();
-  SetRFLAG<FEXCore::X86State::RFLAG_ZF_RAW_LOC>(Test1);
+  // Set ZF according to Test1. This may inadvently set SF, so zero that.
+  SetNZ_ZeroCV(32, Test1);
   SetRFLAG<FEXCore::X86State::RFLAG_CF_RAW_LOC>(Test2);
 
   uint32_t FlagsMaskToZero =
     (1U << X86State::RFLAG_PF_RAW_LOC) |
-    (1U << X86State::RFLAG_AF_RAW_LOC);
+    (1U << X86State::RFLAG_AF_RAW_LOC) |
+    (1U << X86State::RFLAG_SF_RAW_LOC);
 
   ZeroMultipleFlags(FlagsMaskToZero);
 }
