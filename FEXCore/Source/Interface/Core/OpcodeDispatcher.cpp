@@ -1722,8 +1722,7 @@ void OpDispatchBuilder::SHLDOp(OpcodeArgs) {
 
   // x86 masks the shift by 0x3F or 0x1F depending on size of op. Arm will mask
   // by 0x3F when we do 64-bit shifts so we don't need to mask in that case,
-  // since the modulo is preserved even after presubtracting Size=64 for
-  // ShiftRight.
+  // since the modulo is preserved even after negating.
   //
   // TODO: Implement this optimization, it requires turning the shift=0 cases
   // into (shift&0xc0) bit tests which is a bit complicated for now.
@@ -1733,10 +1732,10 @@ void OpDispatchBuilder::SHLDOp(OpcodeArgs) {
     Shift = _And(OpSize::i64Bit, Shift, _Constant(0x1F));
   }
 
-  auto ShiftRight = _Sub(OpSize::i64Bit, _Constant(Size), Shift);
-
+  // For the right-shift, we just negate the shift, since A64 masks the bottom
+  // bits and -x = 32 - x mod 32 (or 64)
   auto Tmp1 = _Lshl(OpSize::i64Bit, Dest, Shift);
-  auto Tmp2 = _Lshr(Size == 64 ? OpSize::i64Bit : OpSize::i32Bit, Src, ShiftRight);
+  auto Tmp2 = _Lshr(Size == 64 ? OpSize::i64Bit : OpSize::i32Bit, Src, _Neg(OpSize::i64Bit, Shift));
 
   OrderedNode *Res = _Or(OpSize::i64Bit, Tmp1, Tmp2);
 
