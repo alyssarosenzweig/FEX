@@ -1615,7 +1615,7 @@ void OpDispatchBuilder::XGetBVOp(OpcodeArgs) {
 template<bool SHL1Bit>
 void OpDispatchBuilder::SHLOp(OpcodeArgs) {
   OrderedNode *Src{};
-  OrderedNode *Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
+  OrderedNode *Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags, {.AllowUpperGarbage = true});
 
   if constexpr (SHL1Bit) {
     Src = _Constant(1);
@@ -1641,7 +1641,10 @@ void OpDispatchBuilder::SHLOp(OpcodeArgs) {
 }
 
 void OpDispatchBuilder::SHLImmediateOp(OpcodeArgs) {
-  OrderedNode *Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
+  // For the data being shifted, upper garbage will become garbage further
+  // shifted left, which will be masked out anyway on write and flag
+  // calculation. So we allow upper garbage even with 8-bit/16-bit data.
+  OrderedNode *Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags, {.AllowUpperGarbage = true});
 
   LOGMAN_THROW_A_FMT(Op->Src[1].IsLiteral(), "Src1 needs to be literal here");
 
