@@ -299,16 +299,17 @@
       ]
     },
     "dec ax": {
-      "ExpectedInstructionCount": 10,
+      "ExpectedInstructionCount": 11,
       "Comment": "0x48",
       "ExpectedArm64ASM": [
         "mov w20, #0x1",
         "uxth w27, w4",
-        "sub w26, w27, #0x1 (1)",
-        "bfxil w4, w26, #0, #16",
+        "sub w21, w27, #0x1 (1)",
+        "bfxil w4, w21, #0, #16",
         "cset w21, hs",
         "lsl w0, w27, #16",
         "cmp w0, w20, lsl #16",
+        "sub w26, w27, #0x1 (1)",
         "mrs x20, nzcv",
         "bfi w20, w21, #29, #1",
         "msr nzcv, x20"
@@ -329,14 +330,13 @@
       ]
     },
     "dec eax": {
-      "ExpectedInstructionCount": 10,
+      "ExpectedInstructionCount": 9,
       "Comment": "0x48",
       "ExpectedArm64ASM": [
         "mov w27, w4",
         "sub w4, w27, #0x1 (1)",
-        "mov w26, w4",
         "cset w20, hs",
-        "cmp w27, #0x1 (1)",
+        "subs w26, w27, #0x1 (1)",
         "mrs x21, nzcv",
         "mov w0, w21",
         "bfi w0, w20, #29, #1",

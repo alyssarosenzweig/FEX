@@ -38,7 +38,7 @@
       "ExpectedArm64ASM": [
         "mov x20, x4",
         "sub x4, x20, x7",
-        "cmp x20, x7",
+        "subs x20, x20, x7",
         "cfinv",
         "cset w20, hs",
         "add x20, x6, x20",
@@ -82,7 +82,7 @@
       "ExpectedArm64ASM": [
         "mov x20, x4",
         "sub x4, x20, x7",
-        "cmp x20, x7",
+        "subs x20, x20, x7",
         "cfinv",
         "mov x20, x5",
         "cset w21, hs",
@@ -129,7 +129,7 @@
       ]
     },
     "DEC consumed": {
-      "ExpectedInstructionCount": 11,
+      "ExpectedInstructionCount": 10,
       "x86Insts": [
         "sub rax, rbx",
         "dec rax"
@@ -139,12 +139,11 @@
         "sub x21, x20, x7",
         "mov x4, x21",
         "sub x4, x21, #0x1 (1)",
-        "cmp x20, x7",
+        "subs x20, x20, x7",
         "cfinv",
-        "mov x27, x21",
-        "mov x26, x4",
         "cset w20, hs",
-        "cmp x21, #0x1 (1)",
+        "mov x27, x21",
+        "subs x26, x21, #0x1 (1)",
         "rmif x20, #63, #nzCv"
       ]
     },
