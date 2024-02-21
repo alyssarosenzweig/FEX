@@ -200,6 +200,28 @@ DEF_OP(SubShift) {
   sub(EmitSize, GetReg(Node), GetReg(Op->Src1.ID()), GetReg(Op->Src2.ID()), ConvertIRShiftType(Op->Shift), Op->ShiftAmount);
 }
 
+DEF_OP(SubWithFlags) {
+  auto Op = IROp->C<IR::IROp_SubWithFlags>();
+  const uint8_t OpSize = IROp->Size;
+
+  LOGMAN_THROW_AA_FMT(OpSize == 4 || OpSize == 8, "Unsupported {} size: {}", __func__, OpSize);
+  const auto EmitSize = OpSize == IR::i64Bit ? ARMEmitter::Size::i64Bit : ARMEmitter::Size::i32Bit;
+
+  uint64_t Const;
+  ARMEmitter::Register Src1 = ARMEmitter::Reg::zr;
+  if (IsInlineConstant(Op->Src1, &Const)) {
+    LOGMAN_THROW_AA_FMT(Const == 0, "No other constant allowed");
+  } else {
+    Src1 = GetReg(Op->Src1.ID());
+  }
+
+  if (IsInlineConstant(Op->Src2, &Const)) {
+    subs(EmitSize, GetReg(Node), Src1, Const);
+  } else {
+    subs(EmitSize, GetReg(Node), Src1, GetReg(Op->Src2.ID()));
+  }
+}
+
 DEF_OP(SubNZCV) {
   auto Op = IROp->C<IR::IROp_SubNZCV>();
   const uint8_t OpSize = IROp->Size;
