@@ -205,7 +205,7 @@
         "test cl, cl"
       ],
       "ExpectedArm64ASM": [
-        "cmp x4, x7",
+        "subs x20, x4, x7",
         "cset x20, eq",
         "bfxil x5, x20, #0, #8",
         "mov x26, x5",
