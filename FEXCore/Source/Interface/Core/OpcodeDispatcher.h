@@ -1397,6 +1397,10 @@ private:
       _StoreRegister(Value, false, offsetof(FEXCore::Core::CPUState, pf_raw), GPRClass, GPRFixedClass, CTX->GetGPRSize());
     } else if (BitOffset == FEXCore::X86State::RFLAG_AF_RAW_LOC) {
       _StoreRegister(Value, false, offsetof(FEXCore::Core::CPUState, af_raw), GPRClass, GPRFixedClass, CTX->GetGPRSize());
+    } else if (BitOffset == FEXCore::X86State::RFLAG_DF_RAW_LOC) {
+      // Transform 0/1 into 1/-1
+      Value = _SubShift(OpSize::i64Bit, _Constant(1), Value, ShiftType::LSL, 1);
+      _StoreFlag(Value, BitOffset);
     } else {
       if (ValueOffset || MustMask)
         Value = _Bfe(OpSize::i32Bit, 1, ValueOffset, Value);
@@ -1453,6 +1457,9 @@ private:
       return _LoadRegister(false, offsetof(FEXCore::Core::CPUState, pf_raw), GPRClass, GPRFixedClass, CTX->GetGPRSize());
     } else if (BitOffset == FEXCore::X86State::RFLAG_AF_RAW_LOC) {
       return _LoadRegister(false, offsetof(FEXCore::Core::CPUState, af_raw), GPRClass, GPRFixedClass, CTX->GetGPRSize());
+    } else if (BitOffset == FEXCore::X86State::RFLAG_DF_RAW_LOC) {
+      // Recover the sign bit, it is the logical DF value
+      return _Lshr(OpSize::i64Bit, _LoadDF(), _Constant(63));
     } else {
       return _LoadFlag(BitOffset);
     }
@@ -1460,9 +1467,13 @@ private:
 
   // Returns (DF ? -Size : Size)
   OrderedNode *LoadDir(const unsigned Size) {
-    auto DF = GetRFLAG(FEXCore::X86State::RFLAG_DF_LOC);
-    auto SizeConst = _Constant(Size);
-    return _SubShift(IR::SizeToOpSize(CTX->GetGPRSize()), SizeConst, DF, ShiftType::LSL, FEXCore::ilog2(Size) + 1);
+    auto Dir = _LoadDF();
+    auto Shift = FEXCore::ilog2(Size);
+
+    if (Shift)
+      return _Lshl(IR::SizeToOpSize(CTX->GetGPRSize()), Dir, _Constant(Shift));
+    else
+      return Dir;
   }
 
   // Returns DF ? (X - Size) : (X + Size)
