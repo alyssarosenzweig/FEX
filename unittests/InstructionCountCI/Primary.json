@@ -3378,35 +3378,32 @@
       ]
     },
     "stosw": {
-      "ExpectedInstructionCount": 5,
+      "ExpectedInstructionCount": 4,
       "Comment": "0xab",
       "ExpectedArm64ASM": [
         "uxth w20, w4",
         "strh w20, [x11]",
         "ldrsb x20, [x28, #714]",
-        "lsl x20, x20, #1",
-        "add x11, x11, x20"
+        "add x11, x11, x20, lsl #1"
       ]
     },
     "stosd": {
-      "ExpectedInstructionCount": 5,
+      "ExpectedInstructionCount": 4,
       "Comment": "0xab",
       "ExpectedArm64ASM": [
         "mov w20, w4",
         "str w20, [x11]",
         "ldrsb x20, [x28, #714]",
-        "lsl x20, x20, #2",
-        "add x11, x11, x20"
+        "add x11, x11, x20, lsl #2"
       ]
     },
     "stosq": {
-      "ExpectedInstructionCount": 4,
+      "ExpectedInstructionCount": 3,
       "Comment": "0xab",
       "ExpectedArm64ASM": [
         "str x4, [x11]",
         "ldrsb x20, [x28, #714]",
-        "lsl x20, x20, #3",
-        "add x11, x11, x20"
+        "add x11, x11, x20, lsl #3"
       ]
     },
     "rep stosb": {
@@ -3515,34 +3512,31 @@
       ]
     },
     "lodsw": {
-      "ExpectedInstructionCount": 5,
+      "ExpectedInstructionCount": 4,
       "Comment": "0xad",
       "ExpectedArm64ASM": [
         "ldrh w20, [x10]",
         "bfxil x4, x20, #0, #16",
         "ldrsb x20, [x28, #714]",
-        "lsl x20, x20, #1",
-        "add x10, x10, x20"
+        "add x10, x10, x20, lsl #1"
       ]
     },
     "lodsd": {
-      "ExpectedInstructionCount": 4,
+      "ExpectedInstructionCount": 3,
       "Comment": "0xad",
       "ExpectedArm64ASM": [
         "ldr w4, [x10]",
         "ldrsb x20, [x28, #714]",
-        "lsl x20, x20, #2",
-        "add x10, x10, x20"
+        "add x10, x10, x20, lsl #2"
       ]
     },
     "lodsq": {
-      "ExpectedInstructionCount": 4,
+      "ExpectedInstructionCount": 3,
       "Comment": "0xad",
       "ExpectedArm64ASM": [
         "ldr x4, [x10]",
         "ldrsb x20, [x28, #714]",
-        "lsl x20, x20, #3",
-        "add x10, x10, x20"
+        "add x10, x10, x20, lsl #3"
       ]
     },
     "rep lodsb": {
@@ -3615,13 +3609,12 @@
       ]
     },
     "scasw": {
-      "ExpectedInstructionCount": 11,
+      "ExpectedInstructionCount": 10,
       "Comment": "0xaf",
       "ExpectedArm64ASM": [
         "ldrh w20, [x11]",
         "ldrsb x21, [x28, #714]",
-        "lsl x21, x21, #1",
-        "add x11, x11, x21",
+        "add x11, x11, x21, lsl #1",
         "eor w27, w4, w20",
         "lsl w0, w4, #16",
         "cmp w0, w20, lsl #16",
@@ -3632,13 +3625,12 @@
       ]
     },
     "scasd": {
-      "ExpectedInstructionCount": 9,
+      "ExpectedInstructionCount": 8,
       "Comment": "0xaf",
       "ExpectedArm64ASM": [
         "ldr w20, [x11]",
         "ldrsb x21, [x28, #714]",
-        "lsl x21, x21, #2",
-        "add x11, x11, x21",
+        "add x11, x11, x21, lsl #2",
         "eor w27, w4, w20",
         "subs w26, w4, w20",
         "mrs x20, nzcv",
@@ -3647,13 +3639,12 @@
       ]
     },
     "scasq": {
-      "ExpectedInstructionCount": 9,
+      "ExpectedInstructionCount": 8,
       "Comment": "0xaf",
       "ExpectedArm64ASM": [
         "ldr x20, [x11]",
         "ldrsb x21, [x28, #714]",
-        "lsl x21, x21, #3",
-        "add x11, x11, x21",
+        "add x11, x11, x21, lsl #3",
         "eor w27, w4, w20",
         "subs x26, x4, x20",
         "mrs x20, nzcv",
