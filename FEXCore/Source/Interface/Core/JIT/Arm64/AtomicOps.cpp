@@ -37,9 +37,10 @@ DEF_OP(CASPair) {
     Bind(&LoopTop);
 
     ldaxp(EmitSize, TMP2, TMP3, MemSrc);
-    cmp(EmitSize, TMP2, Expected.first);
-    ccmp(EmitSize, TMP3, Expected.second, ARMEmitter::StatusFlags::None, ARMEmitter::Condition::CC_EQ);
-    b(ARMEmitter::Condition::CC_NE, &LoopNotExpected);
+    eor(EmitSize, TMP1, TMP2, Expected.first);
+    eor(EmitSize, TMP4, TMP3, Expected.second);
+    orr(EmitSize, TMP1, TMP1, TMP4);
+    cbnz(EmitSize, TMP1, &LoopNotExpected);
     stlxp(EmitSize, TMP2, Desired.first, Desired.second, MemSrc);
     cbnz(EmitSize, TMP2, &LoopTop);
     mov(EmitSize, Dst.first, Expected.first);
