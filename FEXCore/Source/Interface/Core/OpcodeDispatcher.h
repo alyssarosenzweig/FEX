@@ -86,7 +86,6 @@ public:
     TYPE_LSHR,
     TYPE_LSHRI,
     TYPE_LSHRDI,
-    TYPE_ASHR,
     TYPE_ASHRI,
     TYPE_BEXTR,
     TYPE_BLSI,
@@ -339,8 +338,8 @@ public:
   void SHLDImmediateOp(OpcodeArgs);
   void SHRDOp(OpcodeArgs);
   void SHRDImmediateOp(OpcodeArgs);
-  template<bool SHR1Bit>
   void ASHROp(OpcodeArgs);
+  template<bool SHR1Bit>
   void ASHRImmediateOp(OpcodeArgs);
   template<bool Left, bool IsImmediate, bool Is1Bit>
   void RotateOp(OpcodeArgs);
@@ -1790,7 +1789,6 @@ private:
   void CalculateFlags_ShiftRightImmediate(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, uint64_t Shift);
   void CalculateFlags_ShiftRightDoubleImmediate(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, uint64_t Shift);
   void CalculateFlags_ShiftRightImmediateCommon(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, uint64_t Shift);
-  void CalculateFlags_SignShiftRight(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2);
   void CalculateFlags_SignShiftRightImmediate(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, uint64_t Shift);
   void CalculateFlags_BEXTR(OrderedNode *Src);
   void CalculateFlags_BLSI(uint8_t SrcSize, OrderedNode *Src);
@@ -1883,23 +1881,6 @@ private:
 
     CurrentDeferredFlags = DeferredFlagData {
       .Type = FlagsGenerationType::TYPE_LSHR,
-      .SrcSize = GetSrcSize(Op),
-      .Res = Res,
-      .Sources = {
-        .TwoSource = {
-          .Src1 = Src1,
-          .Src2 = Src2,
-        },
-      },
-    };
-  }
-
-  void GenerateFlags_SignShiftRight(FEXCore::X86Tables::DecodedOp Op, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2) {
-    // Flags need to be used, generate incoming flags first.
-    CalculateDeferredFlags();
-
-    CurrentDeferredFlags = DeferredFlagData {
-      .Type = FlagsGenerationType::TYPE_ASHR,
       .SrcSize = GetSrcSize(Op),
       .Res = Res,
       .Sources = {

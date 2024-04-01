@@ -7,6 +7,7 @@ $end_info$
 */
 
 #include "FEXCore/Core/X86Enums.h"
+#include "Interface/IR/IR.h"
 #include "Interface/IR/IREmitter.h"
 
 #include <FEXCore/IR/IR.h>
@@ -155,6 +156,14 @@ DeadFlagCalculationEliminination::Classify(IROp_Header *IROp)
         .Write = FLAG_NZCV,
         .CanReplace = true,
         .Replacement = OP_SBB,
+      };
+
+    case OP_ASHRWITHFLAGS:
+      return {
+        .Read = FLAG_NZCV | FLAG_P,
+        .Write = FLAG_NZCV | FLAG_P,
+        .CanReplace = true,
+        .Replacement = OP_ASHR,
       };
 
     case OP_ADDNZCV:

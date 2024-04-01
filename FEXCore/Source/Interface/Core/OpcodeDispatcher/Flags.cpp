@@ -338,13 +338,6 @@ void OpDispatchBuilder::CalculateDeferredFlags(uint32_t FlagsToCalculateMask) {
         CurrentDeferredFlags.Sources.OneSrcImmediate.Src1,
         CurrentDeferredFlags.Sources.OneSrcImmediate.Imm);
       break;
-    case FlagsGenerationType::TYPE_ASHR:
-      CalculateFlags_SignShiftRight(
-        CurrentDeferredFlags.SrcSize,
-        CurrentDeferredFlags.Res,
-        CurrentDeferredFlags.Sources.TwoSource.Src1,
-        CurrentDeferredFlags.Sources.TwoSource.Src2);
-      break;
     case FlagsGenerationType::TYPE_ASHRI:
       CalculateFlags_SignShiftRightImmediate(
         CurrentDeferredFlags.SrcSize,
@@ -625,25 +618,6 @@ void OpDispatchBuilder::CalculateFlags_ShiftRight(uint8_t SrcSize, OrderedNode *
     // OF flag is set if a sign change occurred
     auto val = _Xor(OpSize, Src1, Res);
     SetRFLAG<FEXCore::X86State::RFLAG_OF_RAW_LOC>(val, SrcSize * 8 - 1, true);
-  });
-}
-
-void OpDispatchBuilder::CalculateFlags_SignShiftRight(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2) {
-  CalculateFlags_ShiftVariable(Src2, [this, SrcSize, Res, Src1, Src2](){
-    // SF/ZF/OF
-    SetNZ_ZeroCV(SrcSize, Res);
-
-    // Extract the last bit shifted in to CF
-    const auto CFSize = IR::SizeToOpSize(std::max<uint32_t>(4u, GetOpSize(Src1)));
-    auto ShiftAmt = _Sub(OpSize::i64Bit, Src2, _Constant(1));
-    auto LastBit = _Lshr(CFSize, Src1, ShiftAmt);
-    SetRFLAG<FEXCore::X86State::RFLAG_CF_RAW_LOC>(LastBit, 0, true);
-
-    CalculatePF(Res);
-
-    // AF
-    // Undefined
-    _InvalidateFlags(1 << X86State::RFLAG_AF_RAW_LOC);
   });
 }
 
