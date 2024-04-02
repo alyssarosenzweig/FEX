@@ -1202,11 +1202,6 @@
           "Size == FEXCore::IR::OpSize::i32Bit || Size == FEXCore::IR::OpSize::i64Bit"
         ]
       },
-      "GPR = LshlWithFlags OpSize:#Size, GPR:$Src1, GPR:$Src2": {
-        "Desc": ["Integer logical shift left with NZCV flag setting"],
-        "DestSize": "Size",
-        "HasSideEffects": true
-      },
       "GPR = Lshr OpSize:#Size, GPR:$Src1, GPR:$Src2": {
         "Desc": ["Integer logical shift right"
                 ],
@@ -1214,11 +1209,6 @@
         "EmitValidation": [
           "Size == FEXCore::IR::OpSize::i32Bit || Size == FEXCore::IR::OpSize::i64Bit"
         ]
-      },
-      "GPR = LshrWithFlags OpSize:#Size, GPR:$Src1, GPR:$Src2": {
-        "Desc": ["Integer logical shift right with NZCV flag setting"],
-        "DestSize": "Size",
-        "HasSideEffects": true
       },
       "GPR = Ashr OpSize:#Size, GPR:$Src1, GPR:$Src2": {
         "Desc": ["Integer arithmetic shift right"
@@ -1228,9 +1218,8 @@
           "Size == FEXCore::IR::OpSize::i32Bit || Size == FEXCore::IR::OpSize::i64Bit"
         ]
       },
-      "GPR = AshrWithFlags OpSize:#Size, GPR:$Src1, GPR:$Src2": {
-        "Desc": ["Integer arithmetic shift right with NZCV flag setting"],
-        "DestSize": "Size",
+      "ShiftFlags OpSize:#Size, GPR:$Result, GPR:$Src1, ShiftType:$Shift, GPR:$Src2": {
+        "Desc": ["Set NZCV+PF flags for specified variable integer shift with given result"],
         "HasSideEffects": true
       },
       "GPR = Ror OpSize:#Size, GPR:$Src1, GPR:$Src2": {
