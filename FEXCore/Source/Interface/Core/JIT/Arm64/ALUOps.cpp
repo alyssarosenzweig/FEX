@@ -871,7 +871,6 @@ DEF_OP(ShiftFlags) {
   const auto Dst = GetReg(Op->Result.ID());
   const auto Src1 = GetReg(Op->Src1.ID());
   const auto Src2 = GetReg(Op->Src2.ID());
-  printf("TT %u\n", OpSize);
 
   ARMEmitter::SingleUseForwardLabel Done;
   cbz(EmitSize, Src2, &Done);

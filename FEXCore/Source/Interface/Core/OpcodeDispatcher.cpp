@@ -1667,7 +1667,6 @@ void OpDispatchBuilder::SHLDOp(OpcodeArgs) {
   StoreResult(GPRClass, Op, Res, -1);
 
   HandleNZCV_RMW();
-  printf("SSSSSSSSSSS %u\n",OpSizeFromSrc(Op));
   _ShiftFlags(OpSizeFromSrc(Op), Res, Dest, ShiftType::LSL, Shift);
 }
 
