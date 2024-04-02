@@ -1574,12 +1574,9 @@ uint32_t OpDispatchBuilder::LoadConstantShift(X86Tables::DecodedOp Op, bool Is1B
 void OpDispatchBuilder::SHLOp(OpcodeArgs) {
   auto Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
   auto Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
-  const auto Size = GetSrcBitSize(Op);
 
-  OrderedNode *Result = _Lshl(Size == 64 ? OpSize::i64Bit : OpSize::i32Bit, Dest, Src);
+  OrderedNode *Result = _LshlWithFlags(OpSizeFromSrc(Op), Dest, Src);
   StoreResult(GPRClass, Op, Result, -1);
-
-  GenerateFlags_ShiftLeft(Op, Result, Dest, Src);
 }
 
 template<bool SHL1Bit>
@@ -1601,10 +1598,8 @@ void OpDispatchBuilder::SHROp(OpcodeArgs) {
   auto Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
   auto Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
 
-  auto ALUOp = _Lshr(IR::SizeToOpSize(std::max<uint8_t>(4, GetSrcSize(Op))), Dest, Src);
-  StoreResult(GPRClass, Op, ALUOp, -1);
-
-  GenerateFlags_ShiftRight(Op, ALUOp, Dest, Src);
+  OrderedNode *Result = _LshrWithFlags(OpSizeFromSrc(Op), Dest, Src);
+  StoreResult(GPRClass, Op, Result, -1);
 }
 
 template<bool SHR1Bit>
