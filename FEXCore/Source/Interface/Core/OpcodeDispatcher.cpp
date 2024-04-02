@@ -1558,44 +1558,36 @@ void OpDispatchBuilder::XGetBVOp(OpcodeArgs) {
   StoreGPRRegister(X86State::REG_RDX, Result_Upper);
 }
 
-template<bool SHL1Bit>
-void OpDispatchBuilder::SHLOp(OpcodeArgs) {
-  OrderedNode *Src{};
-  OrderedNode *Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
+uint32_t OpDispatchBuilder::LoadConstantShift(X86Tables::DecodedOp Op, bool Is1Bit) {
+  if (Is1Bit) {
+    return 1;
+  } else {
+    // x86 masks the shift by 0x3F or 0x1F depending on size of op
+    const uint32_t Size = GetSrcBitSize(Op);
+    uint64_t Mask = Size == 64 ? 0x3F : 0x1F;
 
-  if constexpr (SHL1Bit) {
-    Src = _Constant(1);
-  }
-  else {
-    Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
-  }
-  const auto Size = GetSrcBitSize(Op);
-
-  OrderedNode *Result = _Lshl(Size == 64 ? OpSize::i64Bit : OpSize::i32Bit, Dest, Src);
-  StoreResult(GPRClass, Op, Result, -1);
-
-  if constexpr (SHL1Bit) {
-    GenerateFlags_ShiftLeftImmediate(Op, Result, Dest, 1);
-  }
-  else {
-    GenerateFlags_ShiftLeft(Op, Result, Dest, Src);
+    LOGMAN_THROW_A_FMT(Op->Src[1].IsLiteral(), "Src1 needs to be literal here");
+    return Op->Src[1].Data.Literal.Value & Mask;
   }
 }
 
+void OpDispatchBuilder::SHLOp(OpcodeArgs) {
+  auto Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
+  auto Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
+
+  OrderedNode *Result = _Lshl(IR::SizeToOpSize(std::max<uint8_t>(4, GetSrcSize(Op))), Dest, Src);
+  StoreResult(GPRClass, Op, Result, -1);
+
+  HandleNZCV_RMW();
+  _ShiftFlags(OpSizeFromSrc(Op), Result, Dest, ShiftType::LSL, Src);
+}
+
+template<bool SHL1Bit>
 void OpDispatchBuilder::SHLImmediateOp(OpcodeArgs) {
   OrderedNode *Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
 
-  LOGMAN_THROW_A_FMT(Op->Src[1].IsLiteral(), "Src1 needs to be literal here");
-
-  uint64_t Shift = Op->Src[1].Data.Literal.Value;
+  uint64_t Shift = LoadConstantShift(Op, SHL1Bit);
   const auto Size = GetSrcBitSize(Op);
-
-  // x86 masks the shift by 0x3F or 0x1F depending on size of op
-  if (Size == 64) {
-    Shift &= 0x3F;
-  } else {
-    Shift &= 0x1F;
-  }
 
   OrderedNode *Src = _Constant(Size, Shift);
   OrderedNode *Result = _Lshl(Size == 64 ? OpSize::i64Bit : OpSize::i32Bit, Dest, Src);
@@ -1605,43 +1597,23 @@ void OpDispatchBuilder::SHLImmediateOp(OpcodeArgs) {
   GenerateFlags_ShiftLeftImmediate(Op, Result, Dest, Shift);
 }
 
-template<bool SHR1Bit>
 void OpDispatchBuilder::SHROp(OpcodeArgs) {
-  OrderedNode *Src;
   auto Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
+  auto Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
 
-  if constexpr (SHR1Bit) {
-    Src = _Constant(1);
-  }
-  else {
-    Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
-  }
+  OrderedNode *Result = _Lshr(IR::SizeToOpSize(std::max<uint8_t>(4, GetSrcSize(Op))), Dest, Src);
+  StoreResult(GPRClass, Op, Result, -1);
 
-  auto ALUOp = _Lshr(IR::SizeToOpSize(std::max<uint8_t>(4, GetSrcSize(Op))), Dest, Src);
-  StoreResult(GPRClass, Op, ALUOp, -1);
-
-  if constexpr (SHR1Bit) {
-    GenerateFlags_ShiftRightImmediate(Op, ALUOp, Dest, 1);
-  }
-  else {
-    GenerateFlags_ShiftRight(Op, ALUOp, Dest, Src);
-  }
+  HandleNZCV_RMW();
+  _ShiftFlags(OpSizeFromSrc(Op), Result, Dest, ShiftType::LSR, Src);
 }
 
+template<bool SHR1Bit>
 void OpDispatchBuilder::SHRImmediateOp(OpcodeArgs) {
   auto Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
 
-  LOGMAN_THROW_A_FMT(Op->Src[1].IsLiteral(), "Src1 needs to be literal here");
-
-  uint64_t Shift = Op->Src[1].Data.Literal.Value;
+  uint64_t Shift = LoadConstantShift(Op, SHR1Bit);
   const auto Size = GetSrcBitSize(Op);
-
-  // x86 masks the shift by 0x3F or 0x1F depending on size of op
-  if (Size == 64) {
-    Shift &= 0x3F;
-  } else {
-    Shift &= 0x1F;
-  }
 
   OrderedNode *Src = _Constant(Size, Shift);
   auto ALUOp = _Lshr(Size == 64 ? OpSize::i64Bit : OpSize::i32Bit, Dest, Src);
@@ -1694,8 +1666,8 @@ void OpDispatchBuilder::SHLDOp(OpcodeArgs) {
 
   StoreResult(GPRClass, Op, Res, -1);
 
-  // No need to mask result, upper garbage is ignored in the flag calc
-  GenerateFlags_ShiftLeft(Op, Res, Dest, Shift);
+  HandleNZCV_RMW();
+  _ShiftFlags(OpSizeFromSrc(Op), Res, Dest, ShiftType::LSL, Shift);
 }
 
 void OpDispatchBuilder::SHLDImmediateOp(OpcodeArgs) {
@@ -1774,7 +1746,8 @@ void OpDispatchBuilder::SHRDOp(OpcodeArgs) {
 
   StoreResult(GPRClass, Op, Res, -1);
 
-  GenerateFlags_ShiftRight(Op, Res, Dest, Shift);
+  HandleNZCV_RMW();
+  _ShiftFlags(OpSizeFromSrc(Op), Res, Dest, ShiftType::LSR, Shift);
 }
 
 void OpDispatchBuilder::SHRDImmediateOp(OpcodeArgs) {
@@ -1819,19 +1792,11 @@ void OpDispatchBuilder::SHRDImmediateOp(OpcodeArgs) {
   }
 }
 
-template<bool SHR1Bit>
 void OpDispatchBuilder::ASHROp(OpcodeArgs) {
-  OrderedNode *Src;
-  OrderedNode *Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
+  auto Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
+  auto Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
 
   const auto Size = GetSrcBitSize(Op);
-
-  if constexpr (SHR1Bit) {
-    Src = _Constant(Size, 1);
-  } else {
-    Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
-  }
-
   if (Size < 32) {
     Dest = _Sbfe(OpSize::i64Bit, Size, 0, Dest);
   }
@@ -1839,19 +1804,22 @@ void OpDispatchBuilder::ASHROp(OpcodeArgs) {
   OrderedNode *Result = _Ashr(IR::SizeToOpSize(std::max<uint8_t>(4, GetSrcSize(Op))), Dest, Src);
   StoreResult(GPRClass, Op, Result, -1);
 
-  if constexpr (SHR1Bit) {
-    GenerateFlags_SignShiftRightImmediate(Op, Result, Dest, 1);
-  } else {
-    GenerateFlags_SignShiftRight(Op, Result, Dest, Src);
-  }
+  HandleNZCV_RMW();
+  _ShiftFlags(OpSizeFromSrc(Op), Result, Dest, ShiftType::ASR, Src);
 }
 
+template<bool SHR1Bit>
 void OpDispatchBuilder::ASHRImmediateOp(OpcodeArgs) {
   OrderedNode *Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
 
-  LOGMAN_THROW_A_FMT(Op->Src[1].IsLiteral(), "Src1 needs to be literal here");
+  uint64_t Shift;
+  if (SHR1Bit) {
+    Shift = 1;
+  } else {
+    LOGMAN_THROW_A_FMT(Op->Src[1].IsLiteral(), "Src1 needs to be literal here");
+    Shift = Op->Src[1].Data.Literal.Value;
+  }
 
-  uint64_t Shift = Op->Src[1].Data.Literal.Value;
   const auto Size = GetSrcBitSize(Op);
 
   // x86 masks the shift by 0x3F or 0x1F depending on size of op
@@ -1878,16 +1846,13 @@ void OpDispatchBuilder::RotateOp(OpcodeArgs) {
   CalculateDeferredFlags();
 
   auto LoadShift = [this, Op](bool MustMask) -> OrderedNode * {
-    // x86 masks the shift by 0x3F or 0x1F depending on size of op
-    const uint32_t Size = GetSrcBitSize(Op);
-    uint64_t Mask = Size == 64 ? 0x3F : 0x1F;
-
-    if (Is1Bit) {
-      return _Constant(1);
-    } else if (IsImmediate) {
-      LOGMAN_THROW_A_FMT(Op->Src[1].IsLiteral(), "Src1 needs to be literal here");
-      return _Constant(Op->Src[1].Data.Literal.Value & Mask);
+    if (Is1Bit || IsImmediate) {
+      return _Constant(LoadConstantShift(Op, Is1Bit));
     } else {
+      // x86 masks the shift by 0x3F or 0x1F depending on size of op
+      const uint32_t Size = GetSrcBitSize(Op);
+      uint64_t Mask = Size == 64 ? 0x3F : 0x1F;
+
       auto Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags, {.AllowUpperGarbage = true});
       return MustMask ? _And(OpSize::i64Bit, Src, _Constant(Mask)) : Src;
     }
@@ -6067,55 +6032,55 @@ void InstallOpcodeHandlers(Context::OperatingMode Mode) {
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 1), 1, &OpDispatchBuilder::RotateOp<false, true, false>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 2), 1, &OpDispatchBuilder::RCLOp},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 3), 1, &OpDispatchBuilder::RCROp},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 4), 1, &OpDispatchBuilder::SHLImmediateOp},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 5), 1, &OpDispatchBuilder::SHRImmediateOp},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 6), 1, &OpDispatchBuilder::SHLImmediateOp}, // SAL
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 7), 1, &OpDispatchBuilder::ASHRImmediateOp}, // SAR
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 4), 1, &OpDispatchBuilder::SHLImmediateOp<false>},
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 5), 1, &OpDispatchBuilder::SHRImmediateOp<false>},
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 6), 1, &OpDispatchBuilder::SHLImmediateOp<false>}, // SAL
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC0), 7), 1, &OpDispatchBuilder::ASHRImmediateOp<false>}, // SAR
 
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 0), 1, &OpDispatchBuilder::RotateOp<true, true, false>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 1), 1, &OpDispatchBuilder::RotateOp<false, true, false>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 2), 1, &OpDispatchBuilder::RCLOp},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 3), 1, &OpDispatchBuilder::RCROp},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 4), 1, &OpDispatchBuilder::SHLImmediateOp},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 5), 1, &OpDispatchBuilder::SHRImmediateOp},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 6), 1, &OpDispatchBuilder::SHLImmediateOp}, // SAL
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 7), 1, &OpDispatchBuilder::ASHRImmediateOp}, // SAR
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 4), 1, &OpDispatchBuilder::SHLImmediateOp<false>},
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 5), 1, &OpDispatchBuilder::SHRImmediateOp<false>},
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 6), 1, &OpDispatchBuilder::SHLImmediateOp<false>}, // SAL
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xC1), 7), 1, &OpDispatchBuilder::ASHRImmediateOp<false>}, // SAR
 
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 0), 1, &OpDispatchBuilder::RotateOp<true, true, true>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 1), 1, &OpDispatchBuilder::RotateOp<false, true, true>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 2), 1, &OpDispatchBuilder::RCLOp1Bit},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 3), 1, &OpDispatchBuilder::RCROp8x1Bit},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 4), 1, &OpDispatchBuilder::SHLOp<true>},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 5), 1, &OpDispatchBuilder::SHROp<true>}, // 1Bit SHR
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 6), 1, &OpDispatchBuilder::SHLOp<true>}, // SAL
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 7), 1, &OpDispatchBuilder::ASHROp<true>}, // SAR
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 4), 1, &OpDispatchBuilder::SHLImmediateOp<true>},
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 5), 1, &OpDispatchBuilder::SHRImmediateOp<true>}, // 1Bit SHR
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 6), 1, &OpDispatchBuilder::SHLImmediateOp<true>}, // SAL
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD0), 7), 1, &OpDispatchBuilder::ASHRImmediateOp<true>}, // SAR
 
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 0), 1, &OpDispatchBuilder::RotateOp<true, true, true>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 1), 1, &OpDispatchBuilder::RotateOp<false, true, true>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 2), 1, &OpDispatchBuilder::RCLOp1Bit},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 3), 1, &OpDispatchBuilder::RCROp1Bit},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 4), 1, &OpDispatchBuilder::SHLOp<true>},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 5), 1, &OpDispatchBuilder::SHROp<true>}, // 1Bit SHR
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 6), 1, &OpDispatchBuilder::SHLOp<true>}, // SAL
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 7), 1, &OpDispatchBuilder::ASHROp<true>}, // SAR
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 4), 1, &OpDispatchBuilder::SHLImmediateOp<true>},
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 5), 1, &OpDispatchBuilder::SHRImmediateOp<true>}, // 1Bit SHR
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 6), 1, &OpDispatchBuilder::SHLImmediateOp<true>}, // SAL
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD1), 7), 1, &OpDispatchBuilder::ASHRImmediateOp<true>}, // SAR
 
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 0), 1, &OpDispatchBuilder::RotateOp<true, false, false>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 1), 1, &OpDispatchBuilder::RotateOp<false, false, false>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 2), 1, &OpDispatchBuilder::RCLSmallerOp},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 3), 1, &OpDispatchBuilder::RCRSmallerOp},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 4), 1, &OpDispatchBuilder::SHLOp<false>},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 5), 1, &OpDispatchBuilder::SHROp<false>}, // SHR by CL
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 6), 1, &OpDispatchBuilder::SHLOp<false>}, // SAL
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 7), 1, &OpDispatchBuilder::ASHROp<false>}, // SAR
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 4), 1, &OpDispatchBuilder::SHLOp},
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 5), 1, &OpDispatchBuilder::SHROp}, // SHR by CL
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 6), 1, &OpDispatchBuilder::SHLOp}, // SAL
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD2), 7), 1, &OpDispatchBuilder::ASHROp}, // SAR
 
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 0), 1, &OpDispatchBuilder::RotateOp<true, false, false>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 1), 1, &OpDispatchBuilder::RotateOp<false, false, false>},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 2), 1, &OpDispatchBuilder::RCLOp},
     {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 3), 1, &OpDispatchBuilder::RCROp},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 4), 1, &OpDispatchBuilder::SHLOp<false>},
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 5), 1, &OpDispatchBuilder::SHROp<false>}, // SHR by CL
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 6), 1, &OpDispatchBuilder::SHLOp<false>}, // SAL
-    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 7), 1, &OpDispatchBuilder::ASHROp<false>}, // SAR
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 4), 1, &OpDispatchBuilder::SHLOp},
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 5), 1, &OpDispatchBuilder::SHROp}, // SHR by CL
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 6), 1, &OpDispatchBuilder::SHLOp}, // SAL
+    {OPD(FEXCore::X86Tables::TYPE_GROUP_2, OpToIndex(0xD3), 7), 1, &OpDispatchBuilder::ASHROp}, // SAR
 
     // GROUP 3
     {OPD(FEXCore::X86Tables::TYPE_GROUP_3, OpToIndex(0xF6), 0), 1, &OpDispatchBuilder::TESTOp<1>},
