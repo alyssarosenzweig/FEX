@@ -1747,7 +1747,7 @@ void OpDispatchBuilder::SHRDOp(OpcodeArgs) {
   StoreResult(GPRClass, Op, Res, -1);
 
   HandleNZCV_RMW();
-  _LshrWithFlags(OpSizeFromSrc(Op), Dest, Shift);
+  _ShiftFlags(OpSizeFromSrc(Op), Res, Dest, ShiftType::LSR, Shift);
 }
 
 void OpDispatchBuilder::SHRDImmediateOp(OpcodeArgs) {
