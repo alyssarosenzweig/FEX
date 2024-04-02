@@ -1660,8 +1660,7 @@ void OpDispatchBuilder::SHLDOp(OpcodeArgs) {
 
   StoreResult(GPRClass, Op, Res, -1);
 
-  // No need to mask result, upper garbage is ignored in the flag calc
-  GenerateFlags_ShiftLeft(Op, Res, Dest, Shift);
+  _LshlWithFlags(OpSizeFromSrc(Op), Dest, Shift);
 }
 
 void OpDispatchBuilder::SHLDImmediateOp(OpcodeArgs) {
@@ -1740,7 +1739,7 @@ void OpDispatchBuilder::SHRDOp(OpcodeArgs) {
 
   StoreResult(GPRClass, Op, Res, -1);
 
-  GenerateFlags_ShiftRight(Op, Res, Dest, Shift);
+  _LshrWithFlags(OpSizeFromSrc(Op), Dest, Shift);
 }
 
 void OpDispatchBuilder::SHRDImmediateOp(OpcodeArgs) {
