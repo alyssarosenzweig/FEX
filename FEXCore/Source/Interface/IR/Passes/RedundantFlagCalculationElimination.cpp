@@ -158,6 +158,22 @@ DeadFlagCalculationEliminination::Classify(IROp_Header *IROp)
         .Replacement = OP_SBB,
       };
 
+    case OP_LSHLWITHFLAGS:
+      return {
+        .Read = FLAG_NZCV | FLAG_P,
+        .Write = FLAG_NZCV | FLAG_P,
+        .CanReplace = true,
+        .Replacement = OP_LSHL,
+      };
+
+    case OP_LSHRWITHFLAGS:
+      return {
+        .Read = FLAG_NZCV | FLAG_P,
+        .Write = FLAG_NZCV | FLAG_P,
+        .CanReplace = true,
+        .Replacement = OP_LSHR,
+      };
+
     case OP_ASHRWITHFLAGS:
       return {
         .Read = FLAG_NZCV | FLAG_P,

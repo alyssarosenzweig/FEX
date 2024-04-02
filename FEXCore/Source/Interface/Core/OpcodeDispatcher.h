@@ -328,11 +328,12 @@ public:
   void CMOVOp(OpcodeArgs);
   void CPUIDOp(OpcodeArgs);
   void XGetBVOp(OpcodeArgs);
-  template<bool SHL1Bit>
+  uint32_t LoadConstantShift(X86Tables::DecodedOp Op, bool Is1Bit);
   void SHLOp(OpcodeArgs);
+  template<bool SHL1Bit>
   void SHLImmediateOp(OpcodeArgs);
-  template<bool SHR1Bit>
   void SHROp(OpcodeArgs);
+  template<bool SHR1Bit>
   void SHRImmediateOp(OpcodeArgs);
   void SHLDOp(OpcodeArgs);
   void SHLDImmediateOp(OpcodeArgs);
