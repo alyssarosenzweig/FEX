@@ -891,25 +891,19 @@ DEF_OP(LshlWithFlags) {
     sub(EmitSize, TMP1, TMP1, Src2);
     lsrv(EmitSize, TMP1, Src1, TMP1);
 
-    if (CTX->HostFeatures.SupportsFlagM) {
-      rmif(TMP1, 63, (1 << 1) /* C */);
-    } else {
-      mrs(TMP2, ARMEmitter::SystemRegister::NZCV);
-      bfi(ARMEmitter::Size::i32Bit, TMP2, TMP1, 29 /* C */, 1);
-      msr(ARMEmitter::SystemRegister::NZCV, TMP2);
-    }
-
     // In the case of left shift.
     // OF is only set from the result of <Top Source Bit> XOR <Top Result Bit>.
     // Only defined when Shift is 1 else undefined.
-    eor(EmitSize, TMP1, Src1, Dst);
+    eor(EmitSize, TMP3, Src1, Dst);
 
     if (CTX->HostFeatures.SupportsFlagM) {
-      rmif(TMP1, OpSize * 8 - 1, (1 << 0) /* V */);
+      rmif(TMP1, 63, (1 << 1) /* C */);
+      rmif(TMP3, OpSize * 8 - 1, (1 << 0) /* V */);
     } else {
       mrs(TMP2, ARMEmitter::SystemRegister::NZCV);
-      lsr(EmitSize, TMP1, TMP1, OpSize * 8 - 1);
-      bfi(ARMEmitter::Size::i32Bit, TMP2, TMP1, 28 /* C */, 1);
+      lsr(EmitSize, TMP3, TMP3, OpSize * 8 - 1);
+      bfi(ARMEmitter::Size::i32Bit, TMP3, TMP1, 28 /* V */, 1);
+      bfi(ARMEmitter::Size::i32Bit, TMP2, TMP1, 29 /* C */, 1);
       msr(ARMEmitter::SystemRegister::NZCV, TMP2);
     }
   }
@@ -943,27 +937,22 @@ DEF_OP(LshrWithFlags) {
     sub(ARMEmitter::Size::i64Bit, TMP1, Src2, 1);
     lsrv(EmitSize, TMP1, Src1, TMP1);
 
+    // Only defined when Shift is 1 else undefined
+    // OF flag is set if a sign change occurred
+    eor(EmitSize, TMP3, Src1, Dst);
+
     if (CTX->HostFeatures.SupportsFlagM) {
       rmif(TMP1, 63, (1 << 1) /* C */);
+      rmif(TMP3, OpSize * 8 - 1, (1 << 0) /* V */);
     } else {
       mrs(TMP2, ARMEmitter::SystemRegister::NZCV);
+      lsr(EmitSize, TMP3, TMP3, OpSize * 8 - 1);
+      bfi(ARMEmitter::Size::i32Bit, TMP3, TMP1, 28 /* V */, 1);
       bfi(ARMEmitter::Size::i32Bit, TMP2, TMP1, 29 /* C */, 1);
       msr(ARMEmitter::SystemRegister::NZCV, TMP2);
     }
-
-    // Only defined when Shift is 1 else undefined
-    // OF flag is set if a sign change occurred
-    eor(EmitSize, TMP1, Src1, Dst);
-
-    if (CTX->HostFeatures.SupportsFlagM) {
-      rmif(TMP1, OpSize * 8 - 1, (1 << 0) /* V */);
-    } else {
-      mrs(TMP2, ARMEmitter::SystemRegister::NZCV);
-      lsr(EmitSize, TMP1, TMP1, OpSize * 8 - 1);
-      bfi(ARMEmitter::Size::i32Bit, TMP2, TMP1, 28 /* C */, 1);
-      msr(ARMEmitter::SystemRegister::NZCV, TMP2);
-    }
   }
+
   Bind(&Done);
 }
 
