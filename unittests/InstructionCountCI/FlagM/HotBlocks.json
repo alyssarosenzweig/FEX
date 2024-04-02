@@ -207,7 +207,7 @@
         "mov x20, x4",
         "add x4, x20, #0x1 (1)",
         "lsr x6, x20, #6",
-        "and w5, w20, #0x3f",
+        "ands w5, w20, #0x3f",
         "lsl x19, x10, x5",
         "add x20, x7, x6, lsl #3",
         "ldr x20, [x20]",
