@@ -1588,7 +1588,7 @@
       ]
     },
     "shld ax, bx, cl": {
-      "ExpectedInstructionCount": 26,
+      "ExpectedInstructionCount": 25,
       "Comment": "0x0f 0xad",
       "ExpectedArm64ASM": [
         "uxth w20, w7",
@@ -1604,7 +1604,6 @@
         "csel x20, x21, x20, eq",
         "bfxil x4, x20, #0, #16",
         "msr nzcv, x23",
-        "lsl w20, w21, w22",
         "cbz w22, #+0x30",
         "cmn wzr, w20, lsl #16",
         "mov w26, w20",
@@ -1613,14 +1612,14 @@
         "lsr w0, w21, w0",
         "eor w2, w21, w20",
         "mrs x1, nzcv",
+        "bfi w1, w0, #29, #1",
         "lsr w2, w2, #15",
         "bfi w2, w0, #28, #1",
-        "bfi w1, w0, #29, #1",
         "msr nzcv, x1"
       ]
     },
     "shld eax, ebx, cl": {
-      "ExpectedInstructionCount": 24,
+      "ExpectedInstructionCount": 23,
       "Comment": "0x0f 0xad",
       "ExpectedArm64ASM": [
         "mov w20, w7",
@@ -1635,7 +1634,6 @@
         "csel x20, x21, x20, eq",
         "mov w4, w20",
         "msr nzcv, x23",
-        "lsl w20, w21, w22",
         "cbz w22, #+0x2c",
         "ands w26, w20, w20",
         "mov w0, #0x20",
@@ -1643,14 +1641,14 @@
         "lsr w0, w21, w0",
         "eor w2, w21, w20",
         "mrs x1, nzcv",
+        "bfi w1, w0, #29, #1",
         "lsr w2, w2, #31",
         "bfi w2, w0, #28, #1",
-        "bfi w1, w0, #29, #1",
         "msr nzcv, x1"
       ]
     },
     "shld rax, rbx, cl": {
-      "ExpectedInstructionCount": 22,
+      "ExpectedInstructionCount": 21,
       "Comment": "0x0f 0xad",
       "ExpectedArm64ASM": [
         "mov x20, x4",
@@ -1663,17 +1661,16 @@
         "cmp x21, #0x0 (0)",
         "csel x4, x20, x22, eq",
         "msr nzcv, x23",
-        "lsl x20, x20, x21",
         "cbz x21, #+0x2c",
-        "ands x26, x20, x20",
+        "ands x26, x4, x4",
         "mov x0, #0x40",
         "sub x0, x0, x21",
         "lsr x0, x20, x0",
-        "eor x2, x20, x20",
+        "eor x2, x20, x4",
         "mrs x1, nzcv",
+        "bfi w1, w0, #29, #1",
         "lsr x2, x2, #63",
         "bfi w2, w0, #28, #1",
-        "bfi w1, w0, #29, #1",
         "msr nzcv, x1"
       ]
     },
