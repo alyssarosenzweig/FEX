@@ -916,8 +916,6 @@ DEF_OP(LshlWithFlags) {
   Bind(&Done);
 }
 
-
-
 DEF_OP(LshrWithFlags) {
   auto Op = IROp->C<IR::IROp_LshrWithFlags>();
   const uint8_t OpSize = IROp->Size;
