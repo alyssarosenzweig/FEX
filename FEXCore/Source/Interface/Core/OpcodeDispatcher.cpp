@@ -1575,6 +1575,7 @@ void OpDispatchBuilder::SHLOp(OpcodeArgs) {
   auto Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
   auto Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
 
+  HandleNZCV_RMW();
   OrderedNode *Result = _LshlWithFlags(OpSizeFromSrc(Op), Dest, Src);
   StoreResult(GPRClass, Op, Result, -1);
 }
@@ -1598,6 +1599,7 @@ void OpDispatchBuilder::SHROp(OpcodeArgs) {
   auto Dest = LoadSource(GPRClass, Op, Op->Dest, Op->Flags);
   auto Src = LoadSource(GPRClass, Op, Op->Src[1], Op->Flags);
 
+  HandleNZCV_RMW();
   OrderedNode *Result = _LshrWithFlags(OpSizeFromSrc(Op), Dest, Src);
   StoreResult(GPRClass, Op, Result, -1);
 }
@@ -1660,6 +1662,7 @@ void OpDispatchBuilder::SHLDOp(OpcodeArgs) {
 
   StoreResult(GPRClass, Op, Res, -1);
 
+  HandleNZCV_RMW();
   _LshlWithFlags(OpSizeFromSrc(Op), Dest, Shift);
 }
 
@@ -1739,6 +1742,7 @@ void OpDispatchBuilder::SHRDOp(OpcodeArgs) {
 
   StoreResult(GPRClass, Op, Res, -1);
 
+  HandleNZCV_RMW();
   _LshrWithFlags(OpSizeFromSrc(Op), Dest, Shift);
 }
 
@@ -1793,6 +1797,7 @@ void OpDispatchBuilder::ASHROp(OpcodeArgs) {
     Dest = _Sbfe(OpSize::i64Bit, Size, 0, Dest);
   }
 
+  HandleNZCV_RMW();
   OrderedNode *Result = _AshrWithFlags(OpSizeFromSrc(Op), Dest, Src);
   StoreResult(GPRClass, Op, Result, -1);
 }
