@@ -81,9 +81,7 @@ public:
     TYPE_MUL,
     TYPE_UMUL,
     TYPE_LOGICAL,
-    TYPE_LSHL,
     TYPE_LSHLI,
-    TYPE_LSHR,
     TYPE_LSHRI,
     TYPE_LSHRDI,
     TYPE_ASHRI,
@@ -1672,7 +1670,7 @@ private:
         OrderedNode *Src1;
       } OneSource;
 
-      // Logical, LSHL, LSHR, ASHR
+      // Logical
       struct {
         OrderedNode *Src1;
         OrderedNode *Src2;
@@ -1848,40 +1846,6 @@ private:
   void GenerateFlags_Logical(FEXCore::X86Tables::DecodedOp Op, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2) {
     CurrentDeferredFlags = DeferredFlagData {
       .Type = FlagsGenerationType::TYPE_LOGICAL,
-      .SrcSize = GetSrcSize(Op),
-      .Res = Res,
-      .Sources = {
-        .TwoSource = {
-          .Src1 = Src1,
-          .Src2 = Src2,
-        },
-      },
-    };
-  }
-
-  void GenerateFlags_ShiftLeft(FEXCore::X86Tables::DecodedOp Op, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2) {
-    // Flags need to be used, generate incoming flags first.
-    CalculateDeferredFlags();
-
-    CurrentDeferredFlags = DeferredFlagData {
-      .Type = FlagsGenerationType::TYPE_LSHL,
-      .SrcSize = GetSrcSize(Op),
-      .Res = Res,
-      .Sources = {
-        .TwoSource = {
-          .Src1 = Src1,
-          .Src2 = Src2,
-        },
-      },
-    };
-  }
-
-  void GenerateFlags_ShiftRight(FEXCore::X86Tables::DecodedOp Op, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2) {
-    // Flags need to be used, generate incoming flags first.
-    CalculateDeferredFlags();
-
-    CurrentDeferredFlags = DeferredFlagData {
-      .Type = FlagsGenerationType::TYPE_LSHR,
       .SrcSize = GetSrcSize(Op),
       .Res = Res,
       .Sources = {
