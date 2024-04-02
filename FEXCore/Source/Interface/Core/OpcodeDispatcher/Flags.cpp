@@ -559,54 +559,6 @@ void OpDispatchBuilder::CalculateFlags_Logical(uint8_t SrcSize, OrderedNode *Res
   SetNZ_ZeroCV(SrcSize, Res);
 }
 
-void OpDispatchBuilder::CalculateFlags_ShiftLeft(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2) {
-  CalculateFlags_ShiftVariable(Src2, [this, SrcSize, Res, Src1, Src2](){
-    const auto OpSize = SrcSize == 8 ? OpSize::i64Bit : OpSize::i32Bit;
-    SetNZ_ZeroCV(SrcSize, Res);
-
-    // Extract the last bit shifted in to CF
-    auto Size = _Constant(SrcSize * 8);
-    auto ShiftAmt = _Sub(OpSize, Size, Src2);
-    auto LastBit = _Lshr(OpSize, Src1, ShiftAmt);
-    SetRFLAG<FEXCore::X86State::RFLAG_CF_RAW_LOC>(LastBit, 0, true);
-
-    CalculatePF(Res);
-
-    // AF
-    // Undefined
-    _InvalidateFlags(1 << X86State::RFLAG_AF_RAW_LOC);
-
-    // In the case of left shift. OF is only set from the result of <Top Source Bit> XOR <Top Result Bit>
-    // When Shift > 1 then OF is undefined
-    auto OFXor = _Xor(OpSize, Src1, Res);
-    SetRFLAG<FEXCore::X86State::RFLAG_OF_RAW_LOC>(OFXor, SrcSize * 8 - 1, true);
-  });
-}
-
-void OpDispatchBuilder::CalculateFlags_ShiftRight(uint8_t SrcSize, OrderedNode *Res, OrderedNode *Src1, OrderedNode *Src2) {
-  CalculateFlags_ShiftVariable(Src2, [this, SrcSize, Res, Src1, Src2](){
-    const auto OpSize = SrcSize == 8 ? OpSize::i64Bit : OpSize::i32Bit;
-    SetNZ_ZeroCV(SrcSize, Res);
-
-    // Extract the last bit shifted in to CF
-    auto ShiftAmt = _Sub(OpSize::i64Bit, Src2, _Constant(1));
-    const auto CFSize = IR::SizeToOpSize(std::max<uint8_t>(4u, SrcSize));
-    auto LastBit = _Lshr(CFSize, Src1, ShiftAmt);
-    SetRFLAG<FEXCore::X86State::RFLAG_CF_RAW_LOC>(LastBit, 0, true);
-
-    CalculatePF(Res);
-
-    // AF
-    // Undefined
-    _InvalidateFlags(1 << X86State::RFLAG_AF_RAW_LOC);
-
-    // Only defined when Shift is 1 else undefined
-    // OF flag is set if a sign change occurred
-    auto val = _Xor(OpSize, Src1, Res);
-    SetRFLAG<FEXCore::X86State::RFLAG_OF_RAW_LOC>(val, SrcSize * 8 - 1, true);
-  });
-}
-
 void OpDispatchBuilder::CalculateFlags_ShiftLeftImmediate(uint8_t SrcSize, OrderedNode *UnmaskedRes, OrderedNode *Src1, uint64_t Shift) {
   // No flags changed if shift is zero
   if (Shift == 0) return;
