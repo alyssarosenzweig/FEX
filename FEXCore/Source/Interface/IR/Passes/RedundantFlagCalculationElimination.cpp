@@ -157,6 +157,13 @@ DeadFlagCalculationEliminination::Classify(IROp_Header *IROp)
         .Replacement = OP_SBB,
       };
 
+    case OP_SHIFTFLAGS:
+      return {
+        .Read = FLAG_NZCV | FLAG_P,
+        .Write = FLAG_NZCV | FLAG_P,
+        .CanEliminate = true,
+      };
+
     case OP_ADDNZCV:
     case OP_SUBNZCV:
     case OP_TESTNZ:
