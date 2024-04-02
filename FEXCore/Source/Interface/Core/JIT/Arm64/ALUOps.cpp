@@ -863,6 +863,69 @@ DEF_OP(Ashr) {
   }
 }
 
+DEF_OP(ShiftFlags) {
+  auto Op = IROp->C<IR::IROp_ShiftFlags>();
+  const uint8_t OpSize = IROp->Size;
+  const auto EmitSize = OpSize == 8 ? ARMEmitter::Size::i64Bit : ARMEmitter::Size::i32Bit;
+
+  const auto Dst = GetReg(Op->Result.ID());
+  const auto Src1 = GetReg(Op->Src1.ID());
+  const auto Src2 = GetReg(Op->Src2.ID());
+
+  ARMEmitter::SingleUseForwardLabel Done;
+  cbz(EmitSize, Src2, &Done);
+  {
+    // PF/SF/ZF/OF
+    if (OpSize >= 4) {
+      ands(EmitSize, StaticRegisters[16], Dst, Dst);
+    } else {
+      unsigned Shift = 32 - (OpSize * 8);
+      cmn(EmitSize, ARMEmitter::Reg::zr, Dst, ARMEmitter::ShiftType::LSL, Shift);
+      mov(EmitSize, StaticRegisters[16], Dst);
+    }
+
+    // Extract the last bit shifted in to CF
+    if (Op->Shift == IR::ShiftType::LSL) {
+      if (OpSize >= 4) {
+        neg(EmitSize, TMP1, Src2);
+      } else {
+        mov(EmitSize, TMP1, OpSize * 8);
+        sub(EmitSize, TMP1, TMP1, Src2);
+      }
+    } else {
+      sub(ARMEmitter::Size::i64Bit, TMP1, Src2, 1);
+    }
+
+    lsrv(EmitSize, TMP1, Src1, TMP1);
+
+    bool SetOF = Op->Shift != IR::ShiftType::ASR;
+    if (SetOF) {
+      // Only defined when Shift is 1 else undefined
+      // OF flag is set if a sign change occurred
+      eor(EmitSize, TMP3, Src1, Dst);
+    }
+
+    if (CTX->HostFeatures.SupportsFlagM) {
+      rmif(TMP1, 63, (1 << 1) /* C */);
+
+      if (SetOF)
+        rmif(TMP3, OpSize * 8 - 1, (1 << 0) /* V */);
+    } else {
+      mrs(TMP2, ARMEmitter::SystemRegister::NZCV);
+      bfi(ARMEmitter::Size::i32Bit, TMP2, TMP1, 29 /* C */, 1);
+
+      if (SetOF) {
+        lsr(EmitSize, TMP3, TMP3, OpSize * 8 - 1);
+        bfi(ARMEmitter::Size::i32Bit, TMP3, TMP1, 28 /* V */, 1);
+      }
+
+      msr(ARMEmitter::SystemRegister::NZCV, TMP2);
+    }
+  }
+
+  Bind(&Done);
+}
+
 DEF_OP(Ror) {
   auto Op = IROp->C<IR::IROp_Ror>();
   const uint8_t OpSize = IROp->Size;
