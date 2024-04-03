@@ -1579,7 +1579,8 @@ void OpDispatchBuilder::SHLOp(OpcodeArgs) {
   OrderedNode *Result = _Lshl(Size == 64 ? OpSize::i64Bit : OpSize::i32Bit, Dest, Src);
   StoreResult(GPRClass, Op, Result, -1);
 
-  GenerateFlags_ShiftLeft(Op, Result, Dest, Src);
+  HandleNZCV_RMW();
+  _ShiftFlags(OpSizeFromSrc(Op), Result, Dest, ShiftType::LSL, Src);
 }
 
 template<bool SHL1Bit>
