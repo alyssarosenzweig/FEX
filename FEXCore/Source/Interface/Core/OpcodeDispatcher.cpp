@@ -1580,7 +1580,7 @@ void OpDispatchBuilder::SHLOp(OpcodeArgs) {
   StoreResult(GPRClass, Op, Result, -1);
 
   HandleNZCV_RMW();
-  _ShiftFlags(OpSizeFromSrc(Op), Result, Dest, ShiftType::LSL, Src);
+  CalculatePF(_ShiftFlags(OpSizeFromSrc(Op), Result, Dest, ShiftType::LSL, Src, GetRFLAG(X86State::RFLAG_PF_RAW_LOC)));
 }
 
 template<bool SHL1Bit>

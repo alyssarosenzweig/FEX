@@ -865,23 +865,31 @@ DEF_OP(Ashr) {
 
 DEF_OP(ShiftFlags) {
   auto Op = IROp->C<IR::IROp_ShiftFlags>();
-  const uint8_t OpSize = IROp->Size;
+  const uint8_t OpSize = Op->Size;
   const auto EmitSize = OpSize == 8 ? ARMEmitter::Size::i64Bit : ARMEmitter::Size::i32Bit;
 
+  const auto PFOutput = GetReg(Node);
+  const auto PFInput = GetReg(Op->PFInput.ID());
   const auto Dst = GetReg(Op->Result.ID());
   const auto Src1 = GetReg(Op->Src1.ID());
   const auto Src2 = GetReg(Op->Src2.ID());
+
+  // Set the output outside the branch to avoid needing an extra leg of the
+  // branch. We specifically do not hardcode the PF register anywhere (relying
+  // on a tied SRA register instead) to avoid fighting with RA/RCLSE.
+  if (PFOutput != PFInput)
+    mov(ARMEmitter::Size::i64Bit, PFOutput, PFInput);
 
   ARMEmitter::SingleUseForwardLabel Done;
   cbz(EmitSize, Src2, &Done);
   {
     // PF/SF/ZF/OF
     if (OpSize >= 4) {
-      ands(EmitSize, REG_PF, Dst, Dst);
+      ands(EmitSize, PFOutput, Dst, Dst);
     } else {
       unsigned Shift = 32 - (OpSize * 8);
       cmn(EmitSize, ARMEmitter::Reg::zr, Dst, ARMEmitter::ShiftType::LSL, Shift);
-      mov(ARMEmitter::Size::i64Bit, REG_PF, Dst);
+      mov(ARMEmitter::Size::i64Bit, PFOutput, Dst);
     }
 
     // Extract the last bit shifted in to CF
