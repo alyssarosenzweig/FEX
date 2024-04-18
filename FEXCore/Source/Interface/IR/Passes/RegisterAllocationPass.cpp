@@ -43,10 +43,6 @@ namespace {
 
   constexpr uint32_t DEFAULT_NODE_COUNT = 8192;
 
-  struct Register {
-    uint64_t Index;
-  };
-
   struct RegisterClass {
     uint32_t Available;
     uint32_t Count;
