@@ -78,10 +78,6 @@ namespace {
     return Graph;
   }
 
-  void AllocatePhysicalRegisters(RegisterGraph* Graph, FEXCore::IR::RegisterClassType Class, uint32_t Count) {
-    Graph->Set.Classes[Class].Count = Count;
-  }
-
   FEXCore::IR::RegisterClassType GetRegClassFromNode(FEXCore::IR::IRListView* IR, FEXCore::IR::IROp_Header* IROp) {
     using namespace FEXCore;
 
@@ -165,7 +161,7 @@ void ConstrainedRAPass::AllocateRegisterSet(uint32_t ClassCount) {
 void ConstrainedRAPass::AddRegisters(FEXCore::IR::RegisterClassType Class, uint32_t RegisterCount) {
   LOGMAN_THROW_AA_FMT(RegisterCount <= INVALID_REG, "Up to {} regs supported", INVALID_REG);
 
-  AllocatePhysicalRegisters(Graph, Class, RegisterCount);
+  Graph->Set.Classes[Class].Count = RegisterCount;
 }
 
 RegisterAllocationData* ConstrainedRAPass::GetAllocationData() {
