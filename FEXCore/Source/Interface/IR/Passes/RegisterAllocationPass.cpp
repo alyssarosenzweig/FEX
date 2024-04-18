@@ -91,34 +91,28 @@ namespace {
     case IR::OP_LOADCONTEXT: {
       auto Op = IROp->C<IR::IROp_LoadContext>();
       return Op->Class;
-      break;
     }
     case IR::OP_LOADREGISTER: {
       auto Op = IROp->C<IR::IROp_LoadRegister>();
       return Op->Class;
-      break;
     }
     case IR::OP_LOADCONTEXTINDEXED: {
       auto Op = IROp->C<IR::IROp_LoadContextIndexed>();
       return Op->Class;
-      break;
     }
     case IR::OP_LOADMEM:
     case IR::OP_LOADMEMTSO: {
       auto Op = IROp->C<IR::IROp_LoadMem>();
       return Op->Class;
-      break;
     }
     case IR::OP_FILLREGISTER: {
       auto Op = IROp->C<IR::IROp_FillRegister>();
       return Op->Class;
-      break;
     }
-    default: break;
+    default:
+      // Unreachable
+      return FEXCore::IR::InvalidClass;
     }
-
-    // Unreachable
-    return FEXCore::IR::InvalidClass;
   };
 } // Anonymous namespace
 
