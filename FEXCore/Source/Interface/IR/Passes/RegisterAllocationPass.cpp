@@ -44,7 +44,6 @@ namespace {
   constexpr uint32_t DEFAULT_NODE_COUNT = 8192;
 
   struct Register {
-    bool Virtual;
     uint64_t Index;
   };
 
