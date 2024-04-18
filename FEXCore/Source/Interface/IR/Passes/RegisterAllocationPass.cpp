@@ -48,8 +48,8 @@ namespace {
   };
 
   struct RegisterClass {
-    uint32_t CountMask;
-    uint32_t PhysicalCount;
+    uint32_t Available;
+    uint32_t Count;
   };
 
   struct RegisterSet {
@@ -78,8 +78,7 @@ namespace {
   }
 
   void AllocatePhysicalRegisters(RegisterGraph* Graph, FEXCore::IR::RegisterClassType Class, uint32_t Count) {
-    Graph->Set.Classes[Class].CountMask = (1 << Count) - 1;
-    Graph->Set.Classes[Class].PhysicalCount = Count;
+    Graph->Set.Classes[Class].Count = Count;
   }
 
   FEXCore::IR::RegisterClassType GetRegClassFromNode(FEXCore::IR::IRListView* IR, FEXCore::IR::IROp_Header* IROp) {
@@ -185,9 +184,13 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
   auto IR = IREmit->ViewIR();
 
-  int HACK = 0;
-
   for (auto [BlockNode, BlockHeader] : IR.GetBlocks()) {
+    for (auto &Class : Graph->Set.Classes) {
+      // At the start of each block, all registers are available. Initialize the
+      // available bit set. This is a bit set.
+      Class.Available = (1 << Class.Count) - 1;
+    }
+
     //const auto BlockNodeID = IR.GetID(BlockNode);
     for (auto [CodeNode, IROp] : IR.GetCode(BlockNode)) {
       const auto Node = IR.GetID(CodeNode);
@@ -195,12 +198,21 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       /* Assign destinations */
       if (GetHasDest(IROp->Op)) {
         LOGMAN_THROW_AA_FMT(Node.IsValid(), "Dest must be valid");
-        printf("got %d\n", Node.Value);
 
-        int Reg = HACK++;
+        auto ClassType = GetRegClassFromNode(&IR, IROp);
+        auto Class = &Graph->Set.Classes[ClassType];
 
-        Graph->AllocData->Map[Node.Value] = PhysicalRegister(
-            GetRegClassFromNode(&IR, IROp), Reg);
+        if (!Class->Available) {
+          /* TODO: Spill */
+          abort();
+        }
+
+        // Assign a free register in the appropriate class
+        unsigned Reg = FindFirstSetBit(Class->Available) - 1;
+        LOGMAN_THROW_AA_FMT(Reg < Class->Count, "Ensured available");
+        Class->Available &= ~(1 << Reg);
+
+        Graph->AllocData->Map[Node.Value] = PhysicalRegister(ClassType, Reg);
       }
     }
   }
