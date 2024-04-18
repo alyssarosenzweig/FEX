@@ -28,6 +28,7 @@ $end_info$
 #include <FEXHeaderUtils/BitUtils.h>
 
 #include <algorithm>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -191,6 +192,15 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       Class.Available = (1 << Class.Count) - 1;
     }
 
+    // Pass 1: Iterate the block backwards.
+    //  - analyze kill bits. (TODO)
+    //  - analyze SRA affinities (TODO)
+    //  - insert moves for tied operands (TODO)
+
+    // Pass 2: Iterate the block forward.
+    //  - split live ranges if necessary (shuffle, spills) (TODO)
+    //  - update available set per kill bits (TODO)
+    //  - assign destination registers, guaranteed to succeed.
     //const auto BlockNodeID = IR.GetID(BlockNode);
     for (auto [CodeNode, IROp] : IR.GetCode(BlockNode)) {
       const auto Node = IR.GetID(CodeNode);
@@ -208,7 +218,9 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         }
 
         // Assign a free register in the appropriate class
-        unsigned Reg = FindFirstSetBit(Class->Available) - 1;
+        // Now that we have limited the RA size, this must succeed.
+        // TODO: reg pairs
+        unsigned Reg = std::countr_zero(Class->Available);
         LOGMAN_THROW_AA_FMT(Reg < Class->Count, "Ensured available");
         Class->Available &= ~(1 << Reg);
 
