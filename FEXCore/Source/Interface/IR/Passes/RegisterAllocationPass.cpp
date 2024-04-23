@@ -212,7 +212,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     auto RegBits = Pair ? (0x3 << (2 * Reg.Reg)) : (1 << Reg.Reg);
 
     auto Class = &Graph->Set.Classes[ClassType];
-    printf("freeing %u\n", Reg.Reg);
     LOGMAN_THROW_AA_FMT(!(Class->Available & RegBits), "Register double-free");
     Class->Available |= RegBits;
   };
@@ -234,7 +233,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     uint32_t BestDistance = UINT32_MAX;
     uint32_t BestReg = 0;
 
-    printf("\n!!\n");
     for (int i = 0;i<Class->Count;++i){
       if (!(Class->Available & (1 << i))) {
         OrderedNode *SSA = Class->RegToSSA[i];
@@ -247,7 +245,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
         // XXX: fills etc
         uint32_t NextUse = NextUses.at(Index);
-        printf("%u: %u, %u / %u\n", i, Index, NextUse, IP);
         if (NextUse < BestDistance) {
           BestDistance = NextUse;
           Candidate = SSA;
@@ -255,7 +252,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         }
       }
     }
-    printf("!!\n\n");
 
     LOGMAN_THROW_AA_FMT(BestDistance < IP, "use must be in a future instruction");
     LOGMAN_THROW_AA_FMT(Candidate != nullptr, "must've found something..");
@@ -267,7 +263,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: also handle copies inserted for live range splitting.
     auto Header = IR.GetOp<IROp_Header>(Candidate);
     auto Value = IR.GetID(Candidate).Value;
-    printf("spilling %u : index %u\n", BestReg, Value);
 
     if (Header->Op == OP_FILLREGISTER) {
       auto Value = IR.GetID(Candidate).Value;
@@ -283,7 +278,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       // TODO: we should colour spill slots
       auto Slot = SpillSlotCount++;
 
-      printf("at %u\n", Value);
       auto SpillOp = IREmit->_SpillRegister(Candidate, Slot, CT);
       SpillOp.first->Header.Size = Header->Size;
       SpillOp.first->Header.ElementSize = Header->ElementSize;
@@ -291,7 +285,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     }
 
     // Now that we've spilled the value, take it out of the register file
-    printf("freeing after spill\n");
     FreeReg(SSAToReg.at(Value));
   };
 
@@ -335,7 +328,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     if (!Available) {
       LOGMAN_THROW_AA_FMT(OrigClassType == GPRPairClass, "Already spilled");
       /* TODO: Live range split */
-      printf("live range split!\n");
       abort();
     }
 
@@ -352,7 +344,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       SSAToReg.resize(Node.Value + 1, InvalidPhysReg);
     }
 
-      printf("allocating %u -> %u\n", Node.Value, Reg);
     SSAToReg.at(Node.Value) =
       PhysicalRegister(OrigClassType, Pair ? (Reg >> 1) : Reg);
   };
@@ -483,9 +474,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
         unsigned Index = IROp->Args[i].ID().Value;
 
-        //if (SourcesKilled[SourceIndex]) {
         if (!SourcesNextUses[SourceIndex]) {
-          printf("killing reg %u, index %u\n", SSAToReg.at(Index).Reg, Index);
           FreeReg(SSAToReg.at(Index));
         }
 
@@ -493,7 +482,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
           NextUses.resize(Index + 1, 0);
         }
 
-      printf("next %u\n", Index);
         NextUses.at(Index) = SourcesNextUses[SourceIndex];
       }
 
