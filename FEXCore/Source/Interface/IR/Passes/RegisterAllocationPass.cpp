@@ -14,6 +14,7 @@ $end_info$
 #include <FEXCore/Utils/LogManager.h>
 #include <FEXCore/Utils/Profiler.h>
 #include <FEXCore/fextl/vector.h>
+#include <bit>
 
 namespace FEXCore::IR {
 namespace {
@@ -206,7 +207,30 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     Class->Available |= RegBits;
   };
 
-  auto AssignReg = [this, &IR, IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg, InvalidPhysReg](OrderedNode *CodeNode) {
+  auto ClassSize = [](RegisterClassType T){
+    return (T == GPRPairClass) ? 2 : 1;
+  };
+
+  auto SpillReg = [this, &IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg](auto Class) {
+    auto Candidate = Class->RegToSSA[0];
+
+    auto Value = IR.GetID(Candidate).Value;
+    auto Header = IR.GetOp<IROp_Header>(Candidate);
+    auto CT = GetRegClassFromNode(&IR, Header);
+
+    // TODO: we should colour spill slots
+    auto Slot = SpillSlotCount++;
+
+    auto SpillOp = IREmit->_SpillRegister(Candidate, Slot, CT);
+    SpillOp.first->Header.Size = Header->Size;
+    SpillOp.first->Header.ElementSize = Header->ElementSize;
+    SpillSlots[Value] = Slot + 1;
+
+    // Now that we've spilled the value, take it out of the register file
+    FreeReg(SSAToReg.at(Value));
+  };
+
+  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, InvalidPhysReg](OrderedNode *CodeNode) {
     const auto Node = IR.GetID(CodeNode);
     const auto IROp = IR.GetOp<IROp_Header>(CodeNode);
 
@@ -215,28 +239,19 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     auto OrigClassType = GetRegClassFromNode(&IR, IROp);
     bool Pair = OrigClassType == GPRPairClass;
     auto ClassType = Pair ? GPRClass : OrigClassType;
+    auto Size = ClassSize(ClassType);
 
     auto Class = &Graph->Set.Classes[ClassType];
 
-    if (!(Class->Available & 1)) {
-      auto Candidate = Class->RegToSSA[0];
-
+    // First, we need to limit the register file to ensure space, spilling if
+    // necessary. This is based only on the number of bits set in Available, not
+    // their order. At this point, free registers need not be contiguous, even
+    // if we're allocating a pair. We'll worry about shuffle code later.
+    //
+    // TODO: Maybe specialize this function for pairs vs not-pairs?
+    while (std::popcount(Class->Available) < Size) {
       IREmit->SetWriteCursorBefore(CodeNode);
-
-      auto Value = IR.GetID(Candidate).Value;
-      auto Header = IR.GetOp<IROp_Header>(Candidate);
-      auto CT = GetRegClassFromNode(&IR, Header);
-
-      // TODO: we should colour spill slots
-      auto Slot = SpillSlotCount++;
-
-      auto SpillOp = IREmit->_SpillRegister(Candidate, Slot, CT);
-      SpillOp.first->Header.Size = Header->Size;
-      SpillOp.first->Header.ElementSize = Header->ElementSize;
-      SpillSlots[Value] = Slot + 1;
-
-      // Now that we've spilled the value, take it out of the register file
-      FreeReg(SSAToReg.at(Value));
+      SpillReg(Class);
     }
 
     uint32_t Available = Class->Available;
