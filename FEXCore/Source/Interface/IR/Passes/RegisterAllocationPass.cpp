@@ -213,6 +213,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
   auto SpillReg = [this, &IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg](auto Class, auto IP) {
     // First, find the best node to spill
+    // TODO: further-first
     OrderedNode *Candidate = nullptr;
     for (int i = 0;i<Class->Count;++i){
       if (!(Class->Available & (1 << i))) {
