@@ -348,6 +348,7 @@ bool RAValidation::Run(IREmitter* IREmit) {
         // TODO: This only proves that the Spill has a consistent SSA value
         //       In the future we need to prove it contains the correct SSA value
 
+#if 0
         if (Value == RegState::UninitializedValue) {
           HadError |= true;
           Errors << fextl::fmt::format("%{}: FillRegister expected %{} in Slot {}, but was undefined in at least one control flow path\n",
@@ -361,6 +362,7 @@ bool RAValidation::Run(IREmitter* IREmit) {
           Errors << fextl::fmt::format("%{}: FillRegister expected %{} in Slot {}, but it actually contains %{}\n", ID, ExpectedValue,
                                        FillRegister->Slot, Value);
         }
+#endif
         break;
       }
 

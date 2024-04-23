@@ -174,7 +174,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // have not been spilled. Persisting this mapping avoids repeated spills of
   // the same long-lived SSA value.
   //
-  // Does not grow.
+  // Does not grow. XXX: yes it does
   fextl::vector<unsigned> SpillSlots(IR.GetSSACount(), 0);
 
   unsigned SpillSlotCount = 0;
@@ -211,26 +211,60 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     return (T == GPRPairClass) ? 2 : 1;
   };
 
-  auto SpillReg = [this, &IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg](auto Class) {
-    auto Candidate = Class->RegToSSA[0];
+  auto SpillReg = [this, &IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg](auto Class, auto IP) {
+    // First, find the best node to spill
+    OrderedNode *Candidate = nullptr;
+    for (int i = 0;i<Class->Count;++i){
+      if (!(Class->Available & (1 << i))) {
+        bool nope = false;
+        OrderedNode *SSA = Class->RegToSSA[i];
+        auto Header = IR.GetOp<IROp_Header>(IP);
+        for (auto [index, Arg] = std::tuple(0, Header->Args[0]);
+             index < IR::GetRAArgs(Header->Op);
+             Arg = Header->Args[++index]) {
+          if (IR.GetNode(Arg) == SSA) {
+            nope = true;
+          }
+        }
+        if (!nope) {Candidate = SSA;break;}
+      }
+    }
 
-    auto Value = IR.GetID(Candidate).Value;
+    LOGMAN_THROW_AA_FMT(Candidate != nullptr, "must've found something..");
+
+    // If we already spilled the Candidate, we don't need to spill again, we can
+    // just free the register and insert another fill later. Otherwise, we
+    // actually insert the spill here.
+    //
+    // TODO: also handle copies inserted for live range splitting.
     auto Header = IR.GetOp<IROp_Header>(Candidate);
-    auto CT = GetRegClassFromNode(&IR, Header);
+    auto Value = IR.GetID(Candidate).Value;
 
-    // TODO: we should colour spill slots
-    auto Slot = SpillSlotCount++;
+    if (Header->Op == OP_FILLREGISTER) {
+      auto Value = IR.GetID(Candidate).Value;
+      if (Value >= SpillSlots.size()) {
+        SpillSlots.resize(Value + 1, 0);
+      }
 
-    auto SpillOp = IREmit->_SpillRegister(Candidate, Slot, CT);
-    SpillOp.first->Header.Size = Header->Size;
-    SpillOp.first->Header.ElementSize = Header->ElementSize;
-    SpillSlots[Value] = Slot + 1;
+      auto Fill = IR.GetOp<IROp_FillRegister>(Candidate);
+      SpillSlots.at(Value) = Fill->Slot;
+    } else {
+      auto CT = GetRegClassFromNode(&IR, Header);
+
+      // TODO: we should colour spill slots
+      auto Slot = SpillSlotCount++;
+
+      auto SpillOp = IREmit->_SpillRegister(Candidate, Slot, CT);
+      SpillOp.first->Header.Size = Header->Size;
+      SpillOp.first->Header.ElementSize = Header->ElementSize;
+      SpillSlots.at(Value) = Slot + 1;
+    }
 
     // Now that we've spilled the value, take it out of the register file
     FreeReg(SSAToReg.at(Value));
   };
 
-  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, InvalidPhysReg](OrderedNode *CodeNode) {
+  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, InvalidPhysReg](OrderedNode *CodeNode, OrderedNode *IP) {
     const auto Node = IR.GetID(CodeNode);
     const auto IROp = IR.GetOp<IROp_Header>(CodeNode);
 
@@ -251,9 +285,10 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: Maybe specialize this function for pairs vs not-pairs?
     while (std::popcount(Class->Available) < Size) {
       IREmit->SetWriteCursorBefore(CodeNode);
-      SpillReg(Class);
+      SpillReg(Class, IP);
     }
 
+    // Now that we've spilled, there are enough registers. Try to assign one.
     uint32_t Available = Class->Available;
     uint32_t SizeMask = Pair ? 0b11 : 0b1;
 
@@ -266,12 +301,10 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       Available &= EVEN_BITS;
     }
 
-    LOGMAN_THROW_AA_FMT(Class->Available, "TODO: spill");
-    LOGMAN_THROW_AA_FMT(Available, "TODO: live range split");
-
     if (!Available) {
-      /* TODO: Live range split or spill */
-      printf("spill!\n");
+      LOGMAN_THROW_AA_FMT(OrigClassType == GPRPairClass, "Already spilled");
+      /* TODO: Live range split */
+      printf("live range split!\n");
       abort();
     }
 
@@ -303,7 +336,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     for (auto &Class : Graph->Set.Classes) {
       // At the start of each block, all registers are available. Initialize the
       // available bit set. This is a bit set.
-      Class.Available = (1 << Class.Count) - 1;
+      Class.Available = (1 << 3 /*Class.Count*/) - 1;
     }
 
     // Stream of sources in the block, backwards. (First element is the last
@@ -314,9 +347,8 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: Optimize with a bitset.
     fextl::vector<bool> SourcesKilled;
 
-    // Pass 1: Iterate the block backwards.
-    //  - analyze kill bits.
-    //  - analyze SRA affinities (TODO)
+    // Backwards pass:
+    //  - analyze kill bits and affinities (TODO).
     //  - insert moves for tied operands (TODO)
     {
       // Reverse iteration is not yet working with the iterators
@@ -359,10 +391,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // SourcesKilled is read backwards, this tracks the index
     unsigned SourceIndex = SourcesKilled.size();
 
-    // Pass 2: Iterate the block forward.
-    //  - split live ranges if necessary (shuffle, spills) (TODO)
-    //  - update available set per kill bits
-    //  - assign destination registers, guaranteed to succeed.
+    // Forward pass: Assign registers, spilling as we go.
     for (auto [CodeNode, IROp] : IR.GetCode(BlockNode)) {
       LOGMAN_THROW_AA_FMT(IROp->Op != OP_SPILLREGISTER &&
                           IROp->Op != OP_FILLREGISTER,
@@ -393,7 +422,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
         // Assign a register for the Fill destination. This may cause something
         // else to be spilled, but that's ok.
-        AssignReg(Fill);
+        AssignReg(Fill, CodeNode);
       }
 
       // Remap sources, in case we split any live ranges.
@@ -415,7 +444,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
       // Assign destinations
       if (GetHasDest(IROp->Op)) {
-        AssignReg(CodeNode);
+        AssignReg(CodeNode, CodeNode);
       }
     }
 
