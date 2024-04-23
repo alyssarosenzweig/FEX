@@ -15,6 +15,7 @@ $end_info$
 #include <FEXCore/Utils/Profiler.h>
 #include <FEXCore/fextl/vector.h>
 #include <bit>
+#include <cstdint>
 
 namespace FEXCore::IR {
 namespace {
@@ -177,6 +178,19 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // Does not grow. XXX: yes it does
   fextl::vector<unsigned> SpillSlots(IR.GetSSACount(), 0);
 
+  // Set of sources that have been seen in a backwards walk. Since sources are
+  // all block-local, this doesn't need to be reinitialized in each block. Like
+  // SSAToSSA, this does not grow.
+  //
+  // TODO: Optimize with a bitset.
+  fextl::vector<bool> SourceSeen(IR.GetSSACount(), false);
+
+  // IP of next-use of each SSA source. IPs are measured from the end of the
+  // block, so we don't need to size the block up-front.
+  //
+  // TODO: Do we want to merge with SourceSeen?
+  fextl::vector<uint32_t> NextUses(IR.GetSSACount(), 0);
+
   unsigned SpillSlotCount = 0;
 
   auto IsValidArg = [&IR](auto Arg){
@@ -211,23 +225,29 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     return (T == GPRPairClass) ? 2 : 1;
   };
 
-  auto SpillReg = [this, &IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg](auto Class, auto IP) {
-    // First, find the best node to spill
-    // TODO: further-first
+  auto SpillReg = [this, &IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg, &NextUses](auto Class, uint32_t IP) {
+    // First, find the best node to spill. We use the well-known
+    // "furthest-first" heuristic, spilling the node whose next-use is the
+    // farthest in the future.
+    //
+    // Since we defined IPs relative to the end of the block, the furthest
+    // next-use has the /smallest/ unsigned IP.
+    //
+    // TODO: Remat.
     OrderedNode *Candidate = nullptr;
+    uint32_t BestDistance = UINT32_MAX;
+
     for (int i = 0;i<Class->Count;++i){
       if (!(Class->Available & (1 << i))) {
-        bool nope = false;
         OrderedNode *SSA = Class->RegToSSA[i];
-        auto Header = IR.GetOp<IROp_Header>(IP);
-        for (auto [index, Arg] = std::tuple(0, Header->Args[0]);
-             index < IR::GetRAArgs(Header->Op);
-             Arg = Header->Args[++index]) {
-          if (IR.GetNode(Arg) == SSA) {
-            nope = true;
-          }
+        auto Index = IR.GetID(SSA).Value;
+
+        // XXX: fills etc
+        uint32_t NextUse = NextUses.at(Index);
+        if (NextUse < BestDistance) {
+          BestDistance = NextUse;
+          Candidate = SSA;
         }
-        if (!nope) {Candidate = SSA;break;}
       }
     }
 
@@ -265,7 +285,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     FreeReg(SSAToReg.at(Value));
   };
 
-  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, InvalidPhysReg](OrderedNode *CodeNode, OrderedNode *IP) {
+  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, InvalidPhysReg](OrderedNode *CodeNode, uint32_t IP) {
     const auto Node = IR.GetID(CodeNode);
     const auto IROp = IR.GetOp<IROp_Header>(CodeNode);
 
@@ -326,13 +346,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       PhysicalRegister(OrigClassType, Pair ? (Reg >> 1) : Reg);
   };
 
-  // Set of sources that have been seen in a backwards walk. Since sources are
-  // all block-local, this doesn't need to be reinitialized in each block. Like
-  // SSAToSSA, this does not grow.
-  //
-  // TODO: Optimize with a bitset.
-  fextl::vector<bool> SourceSeen(IR.GetSSACount(), false);
-
   for (auto [BlockNode, BlockHeader] : IR.GetBlocks()) {
     for (auto &Class : Graph->Set.Classes) {
       // At the start of each block, all registers are available. Initialize the
@@ -348,8 +361,16 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: Optimize with a bitset.
     fextl::vector<bool> SourcesKilled;
 
+    // Stream of sources like SourcesKilled, containing the next-use distance
+    // (relative to the end of the block) of the source following this
+    // instruction.
+    fextl::vector<uint32_t> SourcesNextUses;
+
+    // IP relative to the end of the block.
+    uint32_t IP = 0;
+
     // Backwards pass:
-    //  - analyze kill bits and affinities (TODO).
+    //  - analyze kill bits, next-use distances, and affinities (TODO).
     //  - insert moves for tied operands (TODO)
     {
       // Reverse iteration is not yet working with the iterators
@@ -375,11 +396,16 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
           const auto Index = Arg.ID().Value;
 
           // Sources are killed the first time we see them backwards.
-          const bool Killed = !SourceSeen[Index];
+          SourcesKilled.push_back(!SourceSeen[Index]);
           SourceSeen[Index] = true;
 
-          SourcesKilled.push_back(Killed);
+          SourcesNextUses.push_back(NextUses[Index]);
+          NextUses[Index] = IP;
         }
+
+        // IP is relative to end of the block and we're iterating backwards, so
+        // increment here.
+        ++IP;
 
         // Rest is iteration gunk
         if (CodeLast == CodeBegin) {
@@ -388,6 +414,11 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         --CodeLast;
       }
     }
+
+    // After the backwards pass, NextUses contains with the distances of
+    // the first use in each block, which is exactly what we need to initialize
+    // at the start of the forward pass. So there's no need for explicit
+    // initialization here.
 
     // SourcesKilled is read backwards, this tracks the index
     unsigned SourceIndex = SourcesKilled.size();
@@ -423,11 +454,11 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
         // Assign a register for the Fill destination. This may cause something
         // else to be spilled, but that's ok.
-        AssignReg(Fill, CodeNode);
+        AssignReg(Fill, IP);
       }
 
       // Remap sources, in case we split any live ranges.
-      // Then update available bit sets. This must happen after remapping.
+      // Then process killed/next-use info. This must happen after remapping.
       foreach_valid_arg(IROp, i, Arg) {
         const auto Remapped = SSAToSSA[Arg.ID().Value];
 
@@ -438,15 +469,22 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         SourceIndex--;
         LOGMAN_THROW_AA_FMT(SourceIndex >= 0, "Consistent source count");
 
+        unsigned Index = IROp->Args[i].ID().Value;
+
         if (SourcesKilled[SourceIndex]) {
-          FreeReg(SSAToReg.at(IROp->Args[i].ID().Value));
+          FreeReg(SSAToReg.at(Index));
         }
+
+        NextUses.at(Index) = SourcesNextUses[SourceIndex];
       }
 
       // Assign destinations
       if (GetHasDest(IROp->Op)) {
-        AssignReg(CodeNode, CodeNode);
+        AssignReg(CodeNode, IP);
       }
+
+      LOGMAN_THROW_AA_FMT(IP >= 1, "IP relative to end of block, iterating forward");
+      --IP;
     }
 
     LOGMAN_THROW_AA_FMT(SourceIndex == 0, "Consistent source count in block");
