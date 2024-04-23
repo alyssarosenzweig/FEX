@@ -178,17 +178,12 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // Does not grow. XXX: yes it does
   fextl::vector<unsigned> SpillSlots(IR.GetSSACount(), 0);
 
-  // Set of sources that have been seen in a backwards walk. Since sources are
-  // all block-local, this doesn't need to be reinitialized in each block. Like
-  // SSAToSSA, this does not grow.
-  //
-  // TODO: Optimize with a bitset.
-  fextl::vector<bool> SourceSeen(IR.GetSSACount(), false);
-
   // IP of next-use of each SSA source. IPs are measured from the end of the
   // block, so we don't need to size the block up-front.
   //
   // TODO: Do we want to merge with SourceSeen?
+  //
+  // XXX: grows
   fextl::vector<uint32_t> NextUses(IR.GetSSACount(), 0);
 
   unsigned SpillSlotCount = 0;
@@ -217,6 +212,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     auto RegBits = Pair ? (0x3 << (2 * Reg.Reg)) : (1 << Reg.Reg);
 
     auto Class = &Graph->Set.Classes[ClassType];
+    printf("freeing %u\n", Reg.Reg);
     LOGMAN_THROW_AA_FMT(!(Class->Available & RegBits), "Register double-free");
     Class->Available |= RegBits;
   };
@@ -236,21 +232,32 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: Remat.
     OrderedNode *Candidate = nullptr;
     uint32_t BestDistance = UINT32_MAX;
+    uint32_t BestReg = 0;
 
+    printf("\n!!\n");
     for (int i = 0;i<Class->Count;++i){
       if (!(Class->Available & (1 << i))) {
         OrderedNode *SSA = Class->RegToSSA[i];
+
+        // TODO: avoid this edge case
+        if (SSA == nullptr)
+          continue;
+
         auto Index = IR.GetID(SSA).Value;
 
         // XXX: fills etc
         uint32_t NextUse = NextUses.at(Index);
+        printf("%u: %u, %u / %u\n", i, Index, NextUse, IP);
         if (NextUse < BestDistance) {
           BestDistance = NextUse;
           Candidate = SSA;
+          BestReg = i;
         }
       }
     }
+    printf("!!\n\n");
 
+    LOGMAN_THROW_AA_FMT(BestDistance < IP, "use must be in a future instruction");
     LOGMAN_THROW_AA_FMT(Candidate != nullptr, "must've found something..");
 
     // If we already spilled the Candidate, we don't need to spill again, we can
@@ -260,6 +267,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: also handle copies inserted for live range splitting.
     auto Header = IR.GetOp<IROp_Header>(Candidate);
     auto Value = IR.GetID(Candidate).Value;
+    printf("spilling %u : index %u\n", BestReg, Value);
 
     if (Header->Op == OP_FILLREGISTER) {
       auto Value = IR.GetID(Candidate).Value;
@@ -275,6 +283,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       // TODO: we should colour spill slots
       auto Slot = SpillSlotCount++;
 
+      printf("at %u\n", Value);
       auto SpillOp = IREmit->_SpillRegister(Candidate, Slot, CT);
       SpillOp.first->Header.Size = Header->Size;
       SpillOp.first->Header.ElementSize = Header->ElementSize;
@@ -282,6 +291,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     }
 
     // Now that we've spilled the value, take it out of the register file
+    printf("freeing after spill\n");
     FreeReg(SSAToReg.at(Value));
   };
 
@@ -342,6 +352,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       SSAToReg.resize(Node.Value + 1, InvalidPhysReg);
     }
 
+      printf("allocating %u -> %u\n", Node.Value, Reg);
     SSAToReg.at(Node.Value) =
       PhysicalRegister(OrigClassType, Pair ? (Reg >> 1) : Reg);
   };
@@ -356,18 +367,12 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // Stream of sources in the block, backwards. (First element is the last
     // source in the block.)
     //
-    // If set to true, that indicates the corresponding source kills its def.
-    //
-    // TODO: Optimize with a bitset.
-    fextl::vector<bool> SourcesKilled;
-
-    // Stream of sources like SourcesKilled, containing the next-use distance
-    // (relative to the end of the block) of the source following this
-    // instruction.
+    // Contains the next-use distance (relative to the end of the block) of the
+    // source following this instruction.
     fextl::vector<uint32_t> SourcesNextUses;
 
     // IP relative to the end of the block.
-    uint32_t IP = 0;
+    uint32_t IP = 1;
 
     // Backwards pass:
     //  - analyze kill bits, next-use distances, and affinities (TODO).
@@ -395,10 +400,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
           const auto Index = Arg.ID().Value;
 
-          // Sources are killed the first time we see them backwards.
-          SourcesKilled.push_back(!SourceSeen[Index]);
-          SourceSeen[Index] = true;
-
           SourcesNextUses.push_back(NextUses[Index]);
           NextUses[Index] = IP;
         }
@@ -421,7 +422,8 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // initialization here.
 
     // SourcesKilled is read backwards, this tracks the index
-    unsigned SourceIndex = SourcesKilled.size();
+    //unsigned SourceIndex = SourcesKilled.size();
+    unsigned SourceIndex = SourcesNextUses.size();
 
     // Forward pass: Assign registers, spilling as we go.
     for (auto [CodeNode, IROp] : IR.GetCode(BlockNode)) {
@@ -450,7 +452,17 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         Fill.first->Header.ElementSize = Header->ElementSize;
 
         // Remap the source to access the fill destination.
-        SSAToSSA[Arg.ID().Value] = Fill;
+        auto Index = Arg.ID().Value;
+        SSAToSSA[Index] = Fill;
+
+        auto FillIndex = IR.GetID(Fill).Value;
+
+        // Transfer the next-use info
+        if (FillIndex >= NextUses.size()) {
+          NextUses.resize(FillIndex + 1, 0);
+        }
+
+        NextUses[FillIndex] = Index;
 
         // Assign a register for the Fill destination. This may cause something
         // else to be spilled, but that's ok.
@@ -458,7 +470,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       }
 
       // Remap sources, in case we split any live ranges.
-      // Then process killed/next-use info. This must happen after remapping.
+      // Then process killed/next-use info. This must happen _before_ remapping.
       foreach_valid_arg(IROp, i, Arg) {
         const auto Remapped = SSAToSSA[Arg.ID().Value];
 
@@ -471,10 +483,17 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
         unsigned Index = IROp->Args[i].ID().Value;
 
-        if (SourcesKilled[SourceIndex]) {
+        //if (SourcesKilled[SourceIndex]) {
+        if (!SourcesNextUses[SourceIndex]) {
+          printf("killing reg %u, index %u\n", SSAToReg.at(Index).Reg, Index);
           FreeReg(SSAToReg.at(Index));
         }
 
+        if (Index >= NextUses.size()) {
+          NextUses.resize(Index + 1, 0);
+        }
+
+      printf("next %u\n", Index);
         NextUses.at(Index) = SourcesNextUses[SourceIndex];
       }
 
