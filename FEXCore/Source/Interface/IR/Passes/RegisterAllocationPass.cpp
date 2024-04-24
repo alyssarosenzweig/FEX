@@ -145,12 +145,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
   auto IR = IREmit->ViewIR();
 
-  // Map of assigned registers. We need this to be a resizable vector (differing
-  // from RegisterAllocationData) in order to implement live range splits, which
-  // will materialize new SSA indices.
-  PhysicalRegister InvalidPhysReg = PhysicalRegister(InvalidClass, InvalidReg);
-  fextl::vector<PhysicalRegister> SSAToReg(IR.GetSSACount(), InvalidPhysReg);
-
   // SSA def remapping. FEX's original RA could only assign a single register to
   // a given def for its entire live range, and this limitation is baked deep
   // into the IR. However, we need to be able to split live ranges to
@@ -171,8 +165,14 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // SSA defs that were there before we started splitting live ranges.
   fextl::vector<OrderedNode *> SSAToNewSSA(IR.GetSSACount(), nullptr);
 
-  // Inverse map of SSAToNewSSA, this grows.
+  // Inverse map of SSAToNewSSA. Along with SSAToReg, this is the only data
+  // struture that grows. The other maps all track the old SSA names. This helps
+  // water down the wacky.
   fextl::vector<OrderedNode *> NewSSAToSSA(IR.GetSSACount(), nullptr);
+
+  // Map of assigned registers. Grows.
+  PhysicalRegister InvalidPhysReg = PhysicalRegister(InvalidClass, InvalidReg);
+  fextl::vector<PhysicalRegister> SSAToReg(IR.GetSSACount(), InvalidPhysReg);
 
   // Record a remapping of a node Old from the original program Old to a brand
   // new node New.
@@ -190,8 +190,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // Mapping of spilled SSA defs to their assigned slot + 1, or 0 for defs that
   // have not been spilled. Persisting this mapping avoids repeated spills of
   // the same long-lived SSA value.
-  //
-  // Does not grow.
   fextl::vector<unsigned> SpillSlots(IR.GetSSACount(), 0);
 
   auto InsertFill = [&IR, &IREmit, &SpillSlots](OrderedNode *Old) {
@@ -211,10 +209,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
   // IP of next-use of each SSA source. IPs are measured from the end of the
   // block, so we don't need to size the block up-front.
-  //
-  // TODO: Do we want to merge with SourceSeen?
-  //
-  // XXX: grows
   fextl::vector<uint32_t> NextUses(IR.GetSSACount(), 0);
 
   unsigned SpillSlotCount = 0;
@@ -462,7 +456,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       }
 
       // Remap sources, in case we split any live ranges.
-      // Then process killed/next-use info. This must happen _before_ remapping.
+      // Then process killed/next-use info.
       foreach_valid_arg(IROp, i, Arg) {
         const auto Remapped = SSAToNewSSA[Arg.ID().Value];
 
@@ -479,11 +473,8 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
           FreeReg(SSAToReg.at(Index));
         }
 
-        if (Index >= NextUses.size()) {
-          NextUses.resize(Index + 1, 0);
-        }
-
-        NextUses.at(Index) = SourcesNextUses[SourceIndex];
+        auto OldIndex = IR.GetID(NewSSAToSSA.at(Index)).Value;
+        NextUses.at(OldIndex) = SourcesNextUses[SourceIndex];
       }
 
       // Assign destinations
