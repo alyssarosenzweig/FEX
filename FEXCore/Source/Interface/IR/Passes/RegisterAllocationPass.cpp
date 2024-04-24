@@ -191,7 +191,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // have not been spilled. Persisting this mapping avoids repeated spills of
   // the same long-lived SSA value.
   //
-  // Does not grow. XXX: yes it does
+  // Does not grow.
   fextl::vector<unsigned> SpillSlots(IR.GetSSACount(), 0);
 
   auto InsertFill = [&IR, &IREmit, &SpillSlots](OrderedNode *Old) {
@@ -295,15 +295,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     auto Header = IR.GetOp<IROp_Header>(Candidate);
     auto Value = IR.GetID(Candidate).Value;
 
-    if (Header->Op == OP_FILLREGISTER) {
-      auto Value = IR.GetID(Candidate).Value;
-      if (Value >= SpillSlots.size()) {
-        SpillSlots.resize(Value + 1, 0);
-      }
-
-      auto Fill = IR.GetOp<IROp_FillRegister>(Candidate);
-      SpillSlots.at(Value) = Fill->Slot;
-    } else {
+    if (Header->Op != OP_FILLREGISTER) {
       auto CT = GetRegClassFromNode(&IR, Header);
 
       // TODO: we should colour spill slots
@@ -461,7 +453,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       foreach_valid_arg(IROp, _, Arg) {
         auto Old = IR.GetNode(Arg);
 
-        if (SpillSlots[IR.GetID(Old).Value]) {
+        if (SpillSlots.at(IR.GetID(Old).Value)) {
           auto Fill = InsertFill(Old);
 
           Remap(Old, Fill);
