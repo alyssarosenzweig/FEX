@@ -169,7 +169,23 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   //
   // Unlike SSAToReg, this data structure does not grow, since it only tracks
   // SSA defs that were there before we started splitting live ranges.
-  fextl::vector<OrderedNode *> SSAToSSA(IR.GetSSACount(), nullptr);
+  fextl::vector<OrderedNode *> SSAToNewSSA(IR.GetSSACount(), nullptr);
+
+  // Inverse map of SSAToNewSSA, this grows.
+  fextl::vector<OrderedNode *> NewSSAToSSA(IR.GetSSACount(), nullptr);
+
+  // Record a remapping of a node Old from the original program Old to a brand
+  // new node New.
+  auto Remap = [&IR, &SSAToNewSSA, &NewSSAToSSA](OrderedNode *Old, OrderedNode *New) {
+    auto OldID = IR.GetID(Old).Value;
+    auto NewID = IR.GetID(New).Value;
+
+    LOGMAN_THROW_AA_FMT(NewID >= NewSSAToSSA.size(), "Brand new SSA def");
+    NewSSAToSSA.resize(NewID + 1, 0);
+
+    SSAToNewSSA.at(OldID) = New;
+    NewSSAToSSA.at(NewID) = Old;
+  };
 
   // Mapping of spilled SSA defs to their assigned slot + 1, or 0 for defs that
   // have not been spilled. Persisting this mapping avoids repeated spills of
@@ -177,6 +193,21 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   //
   // Does not grow. XXX: yes it does
   fextl::vector<unsigned> SpillSlots(IR.GetSSACount(), 0);
+
+  auto InsertFill = [&IR, &IREmit, &SpillSlots](OrderedNode *Old) {
+    auto ID = IR.GetID(Old).Value;
+    auto SlotPlusOne = SpillSlots.at(ID);
+    LOGMAN_THROW_AA_FMT(SlotPlusOne >= 1, "Old must have been spilled");
+
+    auto Header = IR.GetOp<IROp_Header>(Old);
+    auto RegClass = GetRegClassFromNode(&IR, Header);
+
+    auto Fill = IREmit->_FillRegister(Old, SlotPlusOne - 1, RegClass);
+    Fill.first->Header.Size = Header->Size;
+    Fill.first->Header.ElementSize = Header->ElementSize;
+
+    return Fill;
+  };
 
   // IP of next-use of each SSA source. IPs are measured from the end of the
   // block, so we don't need to size the block up-front.
@@ -428,42 +459,20 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       // This happens before processing kill bits, since we need all sources in
       // the register file at the same time.
       foreach_valid_arg(IROp, _, Arg) {
-        auto SlotPlusOne = SpillSlots[Arg.ID().Value];
-        if (!SlotPlusOne)
-          continue;
+        auto Old = IR.GetNode(Arg);
 
-        // We found a source that needs to be filled.
-        IREmit->SetWriteCursorBefore(CodeNode);
+        if (SpillSlots[IR.GetID(Old).Value]) {
+          auto Fill = InsertFill(Old);
 
-        auto Header = IR.GetOp<IROp_Header>(Arg);
-        auto RegClass = GetRegClassFromNode(&IR, Header);
-
-        auto Fill = IREmit->_FillRegister(IR.GetNode(Arg), SlotPlusOne - 1, RegClass);
-        Fill.first->Header.Size = Header->Size;
-        Fill.first->Header.ElementSize = Header->ElementSize;
-
-        // Remap the source to access the fill destination.
-        auto Index = Arg.ID().Value;
-        SSAToSSA[Index] = Fill;
-
-        auto FillIndex = IR.GetID(Fill).Value;
-
-        // Transfer the next-use info
-        if (FillIndex >= NextUses.size()) {
-          NextUses.resize(FillIndex + 1, 0);
+          Remap(Old, Fill);
+          AssignReg(Fill, IP);
         }
-
-        NextUses[FillIndex] = Index;
-
-        // Assign a register for the Fill destination. This may cause something
-        // else to be spilled, but that's ok.
-        AssignReg(Fill, IP);
       }
 
       // Remap sources, in case we split any live ranges.
       // Then process killed/next-use info. This must happen _before_ remapping.
       foreach_valid_arg(IROp, i, Arg) {
-        const auto Remapped = SSAToSSA[Arg.ID().Value];
+        const auto Remapped = SSAToNewSSA[Arg.ID().Value];
 
         if (Remapped != nullptr) {
           IREmit->ReplaceNodeArgument(CodeNode, i, Remapped);
