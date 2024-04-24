@@ -28,7 +28,7 @@ namespace {
     uint32_t Count;
 
     // If bit R of Available is 0, then RegToSSA[R] is the node
-    // currently allocated to R.
+    // currently allocated to R. This node may be Old or New.
     //
     // Else, RegToSSA[R] is UNDEFINED. This means we don't need to clear this
     // when clearing bits from Available.
@@ -155,6 +155,13 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // because it means SSAToReg can grow, but it avoids disturbing the rest of
   // FEX (for now).
   //
+  // We define "Old" nodes as nodes present in the original IR, and "New" nodes
+  // as nodes added to split live ranges. Helpful properties:
+  //
+  // - A node is Old <===> it is not New
+  // - A node is Old <===> its ID < IR.GetSSACount() at the start
+  // - All sources are Old before remapping an instruction
+  //
   // Down the road, we might want to optimize this but I'm not prepared to
   // bulldoze the IR for this.
   //
@@ -170,13 +177,30 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // water down the wacky.
   fextl::vector<OrderedNode *> NewSSAToSSA(IR.GetSSACount(), nullptr);
 
+  auto IsOld = [&IR, &SSAToNewSSA](OrderedNode *Node) {
+    return IR.GetID(Node).Value < SSAToNewSSA.size();
+  }
+
   // Map of assigned registers. Grows.
   PhysicalRegister InvalidPhysReg = PhysicalRegister(InvalidClass, InvalidReg);
   fextl::vector<PhysicalRegister> SSAToReg(IR.GetSSACount(), InvalidPhysReg);
 
-  // Record a remapping of a node Old from the original program Old to a brand
-  // new node New.
-  auto Remap = [&IR, &SSAToNewSSA, &NewSSAToSSA](OrderedNode *Old, OrderedNode *New) {
+  // Return the New node (if it exists) for an Old node, else the Old node.
+  auto Map = [&IR, &SSAToNewSSA, &IsOld](OrderedNode *Old) {
+    LOGMAN_THROW_AA_FMT(IsOld(Old), "Pre-condition");
+    auto Index = IR.GetID(Old).Value;
+
+    return SSAToNewSSA.at(Index) ?: Old;
+  };
+
+  // Return the Old node for a possibly-remapped node.
+  auto Unmap = [&IR, &NewSSAToSSA](OrderedNode *Node) {
+    auto Index = IR.GetID(Node).Value;
+    return NewSSAToSSA.at(Index) ?: Node;
+  };
+
+  // Record a remapping of Old to New.
+  auto Remap = [&IR, &SSAToNewSSA, &NewSSAToSSA, &Map, &Unmap](OrderedNode *Old, OrderedNode *New) {
     auto OldID = IR.GetID(Old).Value;
     auto NewID = IR.GetID(New).Value;
 
@@ -185,6 +209,10 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
     SSAToNewSSA.at(OldID) = New;
     NewSSAToSSA.at(NewID) = Old;
+
+    LOGMAN_THROW_AA_FMT(Map(Old) == New, "Post-condition");
+    LOGMAN_THROW_AA_FMT(Unmap(New) == Old, "Post-condition");
+    LOGMAN_THROW_AA_FMT(Unmap(Old) == Old, "Invariant");
   };
 
   // Mapping of spilled SSA defs to their assigned slot + 1, or 0 for defs that
@@ -192,9 +220,10 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   // the same long-lived SSA value.
   fextl::vector<unsigned> SpillSlots(IR.GetSSACount(), 0);
 
-  auto InsertFill = [&IR, &IREmit, &SpillSlots](OrderedNode *Old) {
-    auto ID = IR.GetID(Old).Value;
-    auto SlotPlusOne = SpillSlots.at(ID);
+  auto InsertFill = [&IR, &IREmit, &SpillSlots, &IsOld](OrderedNode *Old) {
+    LOGMAN_THROW_AA_FMT(IsOld(Old), "Precondition");
+
+    auto SlotPlusOne = SpillSlots.at(IR.GetID(Old).Value);
     LOGMAN_THROW_AA_FMT(SlotPlusOne >= 1, "Old must have been spilled");
 
     auto Header = IR.GetOp<IROp_Header>(Old);
@@ -245,7 +274,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     return (T == GPRPairClass) ? 2 : 1;
   };
 
-  auto SpillReg = [this, &IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg, &NextUses](auto Class, uint32_t IP) {
+  auto SpillReg = [&IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg, &Unmap, &IsOld, &NextUses](auto Class, uint32_t IP) {
     // First, find the best node to spill. We use the well-known
     // "furthest-first" heuristic, spilling the node whose next-use is the
     // farthest in the future.
@@ -256,7 +285,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: Remat.
     OrderedNode *Candidate = nullptr;
     uint32_t BestDistance = UINT32_MAX;
-    uint32_t BestReg = 0;
 
     for (int i = 0;i<Class->Count;++i){
       if (!(Class->Available & (1 << i))) {
@@ -266,30 +294,25 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         if (SSA == nullptr)
           continue;
 
-        auto Index = IR.GetID(SSA).Value;
-
-        // XXX: fills etc
-        uint32_t NextUse = NextUses.at(Index);
+        auto Old = Unmap(SSA);
+        uint32_t NextUse = NextUses.at(IR.GetID(Old).Value);
         if (NextUse < BestDistance) {
           BestDistance = NextUse;
-          Candidate = SSA;
-          BestReg = i;
+          Candidate = Old;
         }
       }
     }
 
     LOGMAN_THROW_AA_FMT(BestDistance < IP, "use must be in a future instruction");
     LOGMAN_THROW_AA_FMT(Candidate != nullptr, "must've found something..");
+    LOGMAN_THROW_AA_FMT(IsOld(Candidate), "Invariant");
 
-    // If we already spilled the Candidate, we don't need to spill again, we can
-    // just free the register and insert another fill later. Otherwise, we
-    // actually insert the spill here.
-    //
-    // TODO: also handle copies inserted for live range splitting.
     auto Header = IR.GetOp<IROp_Header>(Candidate);
     auto Value = IR.GetID(Candidate).Value;
+    auto Spilled = SpillSlots.at(Value) != 0;
 
-    if (Header->Op != OP_FILLREGISTER) {
+    // If we already spilled the Candidate, we don't need to spill again.
+    if (!Spilled) {
       auto CT = GetRegClassFromNode(&IR, Header);
 
       // TODO: we should colour spill slots
@@ -302,7 +325,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     }
 
     // Now that we've spilled the value, take it out of the register file
-    FreeReg(SSAToReg.at(Value));
+    FreeReg(SSAToReg.at(IR.GetID(Map(Candidate)).Value));
   };
 
   auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, InvalidPhysReg](OrderedNode *CodeNode, uint32_t IP) {
@@ -446,6 +469,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       // the register file at the same time.
       foreach_valid_arg(IROp, _, Arg) {
         auto Old = IR.GetNode(Arg);
+        LOGMAN_THROW_AA_FMT(IsOld(Old), "before remapping");
 
         if (SpillSlots.at(IR.GetID(Old).Value)) {
           auto Fill = InsertFill(Old);
@@ -458,8 +482,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       // Remap sources, in case we split any live ranges.
       // Then process killed/next-use info.
       foreach_valid_arg(IROp, i, Arg) {
-        const auto Remapped = SSAToNewSSA[Arg.ID().Value];
-
+        const auto Remapped = SSAToNewSSA.at(Arg.ID().Value);
         if (Remapped != nullptr) {
           IREmit->ReplaceNodeArgument(CodeNode, i, Remapped);
         }
@@ -467,14 +490,14 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         SourceIndex--;
         LOGMAN_THROW_AA_FMT(SourceIndex >= 0, "Consistent source count");
 
-        unsigned Index = IROp->Args[i].ID().Value;
+        auto New = IR.GetNode(IROp->Args[i]);
+        auto Old = Unmap(New);
 
         if (!SourcesNextUses[SourceIndex]) {
-          FreeReg(SSAToReg.at(Index));
+          FreeReg(SSAToReg.at(IR.GetID(New).Value));
         }
 
-        auto OldIndex = IR.GetID(NewSSAToSSA.at(Index)).Value;
-        NextUses.at(OldIndex) = SourcesNextUses[SourceIndex];
+        NextUses.at(IR.GetID(Old).Value) = SourcesNextUses[SourceIndex];
       }
 
       // Assign destinations
