@@ -179,7 +179,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
   auto IsOld = [&IR, &SSAToNewSSA](OrderedNode *Node) {
     return IR.GetID(Node).Value < SSAToNewSSA.size();
-  }
+  };
 
   // Map of assigned registers. Grows.
   PhysicalRegister InvalidPhysReg = PhysicalRegister(InvalidClass, InvalidReg);
@@ -274,7 +274,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     return (T == GPRPairClass) ? 2 : 1;
   };
 
-  auto SpillReg = [&IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg, &Unmap, &IsOld, &NextUses](auto Class, uint32_t IP) {
+  auto SpillReg = [&IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg, &Map, &Unmap, &IsOld, &NextUses](auto Class, uint32_t IP) {
     // First, find the best node to spill. We use the well-known
     // "furthest-first" heuristic, spilling the node whose next-use is the
     // farthest in the future.
