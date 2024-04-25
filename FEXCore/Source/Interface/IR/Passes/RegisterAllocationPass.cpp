@@ -304,24 +304,27 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     OrderedNode *Candidate = nullptr;
     uint32_t BestDistance = UINT32_MAX;
     uint8_t BestReg = ~0;
+    printf("avail %X\n", Class->Available);
 
     for (int i = 0;i<Class->Count;++i){
       if (!(Class->Available & (1 << i))) {
         OrderedNode *Old = Class->RegToSSA[i];
 
-        // TODO: avoid this edge case
-        if (Old == nullptr)
-          continue;
-
+        LOGMAN_THROW_AA_FMT(Old != nullptr, "Invariant");
         LOGMAN_THROW_AA_FMT(IsOld(Old), "Invariant");
         LOGMAN_THROW_AA_FMT(SSAToReg.at(IR.GetID(Map(Old)).Value).Reg == i, "Invariant'");
-        //auto Old = Unmap(SSA);
+
         uint32_t NextUse = NextUses.at(IR.GetID(Old).Value);
-        printf("%u: %u\n", i, NextUse);
         if (NextUse < BestDistance) {
           BestDistance = NextUse;
           BestReg = i;
           Candidate = Old;
+        }
+
+        // TODO: Cleaner solution?
+        auto Header = IR.GetOp<IROp_Header>(Old);
+        if (GetRegClassFromNode(&IR, Header) == GPRPairClass) {
+          ++i;
         }
       }
     }
@@ -331,7 +334,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     LOGMAN_THROW_AA_FMT(IsOld(Candidate), "Invariant");
 
     auto Reg = SSAToReg.at(IR.GetID(Map(Candidate)).Value);
-    printf("at IP %u: %u vs %u For %u (mapped %u)\n", IP, Reg.Reg, BestReg, IR.GetID(Candidate).Value, IR.GetID(Map(Candidate)).Value);
+    printf("at IP %u: %u vs %u For %u (mapped %u), %u\n", IP, Reg.Reg, BestReg, IR.GetID(Candidate).Value, IR.GetID(Map(Candidate)).Value, Reg.Class);
     LOGMAN_THROW_AA_FMT(Reg.Reg == BestReg, "Invariant");
 
     auto Header = IR.GetOp<IROp_Header>(Candidate);
@@ -340,12 +343,12 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
     // If we already spilled the Candidate, we don't need to spill again.
     if (!Spilled) {
-      auto CT = GetRegClassFromNode(&IR, Header);
+      LOGMAN_THROW_AA_FMT(Reg.Class == GetRegClassFromNode(&IR, Header), "Consistent");
 
       // TODO: we should colour spill slots
       auto Slot = SpillSlotCount++;
 
-      auto SpillOp = IREmit->_SpillRegister(Candidate, Slot, CT);
+      auto SpillOp = IREmit->_SpillRegister(Candidate, Slot, (RegisterClassType)Reg.Class);
       SpillOp.first->Header.Size = Header->Size;
       SpillOp.first->Header.ElementSize = Header->ElementSize;
       SpillSlots.at(Value) = Slot + 1;
@@ -383,8 +386,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     auto OrigClassType = GetRegClassFromNode(&IR, IROp);
     bool Pair = OrigClassType == GPRPairClass;
     auto ClassType = Pair ? GPRClass : OrigClassType;
-    auto Size = ClassSize(ClassType);
-
     auto Class = &Graph->Set.Classes[ClassType];
 
     // First, we need to limit the register file to ensure space, spilling if
@@ -393,7 +394,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // if we're allocating a pair. We'll worry about shuffle code later.
     //
     // TODO: Maybe specialize this function for pairs vs not-pairs?
-    while (std::popcount(Class->Available) < Size) {
+    while (std::popcount(Class->Available) < ClassSize(OrigClassType)) {
       IREmit->SetWriteCursorBefore(CodeNode);
       printf("spilling to assign %u\n", Node.Value);
       SpillReg(Class, IP);
@@ -420,13 +421,14 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
       // First, find a free scalar. There must be at least 2.
       Available = Class->Available;
-      printf("%X\n", Available);
+      printf("we have %X\n", Available);
       unsigned Hole = std::countr_zero(Available);
       LOGMAN_THROW_AA_FMT(Class->Available & (1 << Hole), "Definition");
 
       // Its neighbour is blocking the pair.
       unsigned Blocked = Hole ^ 1;
       LOGMAN_THROW_AA_FMT(!(Class->Available & (1 << Blocked)), "Invariant");
+      printf("hole at %u, blocked at %u\n", Hole, Blocked);
 
       // Find another free scalar to evict the neighbour
       uint32_t AvailableAfter = Available & ~(1 << Hole);
@@ -436,6 +438,11 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       // Now just evict.
       IREmit->SetWriteCursorBefore(CodeNode);
       auto Old = Class->RegToSSA[Blocked];
+
+      printf("%u\n", GetRegClassFromNode(&IR, IR.GetOp<IROp_Header>(Old)));
+      LOGMAN_THROW_AA_FMT(GetRegClassFromNode(&IR, IR.GetOp<IROp_Header>(Old)) == GPRClass,
+                          "Must be a scalar due to alignment and free neighbour");
+      printf("??\n");
       auto Copy = IREmit->_Copy(Old);
       printf("Copying %u(%u) -> %u(%u)\n", IR.GetID(Old).Value, Blocked, IR.GetID(Copy).Value, NewReg);
 
