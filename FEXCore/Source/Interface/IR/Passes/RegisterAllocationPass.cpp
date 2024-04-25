@@ -28,7 +28,10 @@ namespace {
     uint32_t Count;
 
     // If bit R of Available is 0, then RegToSSA[R] is the node
-    // currently allocated to R. This node may be Old or New.
+    // currently allocated to R.
+    //
+    // For now, this is the Old version of the node. (TODO: Consider relaxing
+    // this for performance?)
     //
     // Else, RegToSSA[R] is UNDEFINED. This means we don't need to clear this
     // when clearing bits from Available.
@@ -260,6 +263,20 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     }
   };
 
+  auto ClassSize = [](RegisterClassType T){
+    return (T == GPRPairClass) ? 2 : 1;
+  };
+
+  auto IsInRegisterFile = [this, &IR, &Map, &IsOld, &SSAToReg, &ClassSize](auto Old) {
+    LOGMAN_THROW_AA_FMT(IsOld(Old), "Precondition");
+
+    auto Reg = SSAToReg.at(IR.GetID(Map(Old)).Value);
+    auto Class = &Graph->Set.Classes[Reg.Class == GPRPairClass ? GPRClass : Reg.Class];
+    auto R = Reg.Reg * ClassSize((RegisterClassType)Reg.Class);
+
+    return (!(Class->Available & (1 << R))) && Class->RegToSSA[R] == Old;
+  };
+
   auto FreeReg = [this](auto Reg){
     bool Pair = Reg.Class == GPRPairClass;
     auto ClassType = Pair ? GPRClass : Reg.Class;
@@ -268,10 +285,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     auto Class = &Graph->Set.Classes[ClassType];
     LOGMAN_THROW_AA_FMT(!(Class->Available & RegBits), "Register double-free");
     Class->Available |= RegBits;
-  };
-
-  auto ClassSize = [](RegisterClassType T){
-    return (T == GPRPairClass) ? 2 : 1;
   };
 
   auto SpillReg = [&IR, &IREmit, &SpillSlotCount, &SpillSlots, &SSAToReg, &FreeReg, &Map, &Unmap, &IsOld, &NextUses](auto Class, uint32_t IP) {
@@ -285,19 +298,24 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: Remat.
     OrderedNode *Candidate = nullptr;
     uint32_t BestDistance = UINT32_MAX;
+    uint8_t BestReg = ~0;
 
     for (int i = 0;i<Class->Count;++i){
       if (!(Class->Available & (1 << i))) {
-        OrderedNode *SSA = Class->RegToSSA[i];
+        OrderedNode *Old = Class->RegToSSA[i];
 
         // TODO: avoid this edge case
-        if (SSA == nullptr)
+        if (Old == nullptr)
           continue;
 
-        auto Old = Unmap(SSA);
+        LOGMAN_THROW_AA_FMT(IsOld(Old), "Invariant");
+        LOGMAN_THROW_AA_FMT(SSAToReg.at(IR.GetID(Map(Old)).Value).Reg == i, "Invariant'");
+        //auto Old = Unmap(SSA);
         uint32_t NextUse = NextUses.at(IR.GetID(Old).Value);
+        printf("%u: %u\n", i, NextUse);
         if (NextUse < BestDistance) {
           BestDistance = NextUse;
+          BestReg = i;
           Candidate = Old;
         }
       }
@@ -306,6 +324,10 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     LOGMAN_THROW_AA_FMT(BestDistance < IP, "use must be in a future instruction");
     LOGMAN_THROW_AA_FMT(Candidate != nullptr, "must've found something..");
     LOGMAN_THROW_AA_FMT(IsOld(Candidate), "Invariant");
+
+    auto Reg = SSAToReg.at(IR.GetID(Map(Candidate)).Value);
+    printf("at IP %u: %u vs %u For %u (mapped %u)\n", IP, Reg.Reg, BestReg, IR.GetID(Candidate).Value, IR.GetID(Map(Candidate)).Value);
+    LOGMAN_THROW_AA_FMT(Reg.Reg == BestReg, "Invariant");
 
     auto Header = IR.GetOp<IROp_Header>(Candidate);
     auto Value = IR.GetID(Candidate).Value;
@@ -325,10 +347,10 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     }
 
     // Now that we've spilled the value, take it out of the register file
-    FreeReg(SSAToReg.at(IR.GetID(Map(Candidate)).Value));
+    FreeReg(Reg);
   };
 
-  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, InvalidPhysReg](OrderedNode *CodeNode, uint32_t IP) {
+  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, &Unmap, InvalidPhysReg](OrderedNode *CodeNode, uint32_t IP) {
     const auto Node = IR.GetID(CodeNode);
     const auto IROp = IR.GetOp<IROp_Header>(CodeNode);
 
@@ -349,6 +371,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // TODO: Maybe specialize this function for pairs vs not-pairs?
     while (std::popcount(Class->Available) < Size) {
       IREmit->SetWriteCursorBefore(CodeNode);
+      printf("spilling to assign %u\n", Node.Value);
       SpillReg(Class, IP);
     }
 
@@ -378,7 +401,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
     LOGMAN_THROW_AA_FMT((Class->Available & RegBits) == RegBits, "Ensured available");
     Class->Available &= ~RegBits;
-    Class->RegToSSA[Reg] = CodeNode;
+    Class->RegToSSA[Reg] = Unmap(CodeNode);
 
     if (Node.Value >= SSAToReg.size()) {
       SSAToReg.resize(Node.Value + 1, InvalidPhysReg);
@@ -392,7 +415,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     for (auto &Class : Graph->Set.Classes) {
       // At the start of each block, all registers are available. Initialize the
       // available bit set. This is a bit set.
-      Class.Available = (1 << 3 /*Class.Count*/) - 1;
+      Class.Available = (1 << 8 /*Class.Count*/) - 1;
     }
 
     // Stream of sources in the block, backwards. (First element is the last
@@ -452,8 +475,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     // at the start of the forward pass. So there's no need for explicit
     // initialization here.
 
-    // SourcesKilled is read backwards, this tracks the index
-    //unsigned SourceIndex = SourcesKilled.size();
+    // SourcesNextUses is read backwards, this tracks the index
     unsigned SourceIndex = SourcesNextUses.size();
 
     // Forward pass: Assign registers, spilling as we go.
@@ -463,17 +485,21 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
                           "Spills/fills inserted before the node,"
                           "so we don't see them iterating forward");
 
-      // Fill all sources read.
+      // Fill all sources read that are not already in the register file.
       //
       // This happens before processing kill bits, since we need all sources in
       // the register file at the same time.
       foreach_valid_arg(IROp, _, Arg) {
         auto Old = IR.GetNode(Arg);
+        printf("%u has arg %u\n", IR.GetID(CodeNode).Value, IR.GetID(Old).Value);
         LOGMAN_THROW_AA_FMT(IsOld(Old), "before remapping");
 
-        if (SpillSlots.at(IR.GetID(Old).Value)) {
+        if (!IsInRegisterFile(Old)) {
+          LOGMAN_THROW_AA_FMT(SpillSlots.at(IR.GetID(Old).Value), "Must have been spilled");
+          IREmit->SetWriteCursorBefore(CodeNode);
           auto Fill = InsertFill(Old);
 
+          printf("FILL: remapping %u->%u\n", IR.GetID(Old).Value, IR.GetID(Fill).Value);
           Remap(Old, Fill);
           AssignReg(Fill, IP);
         }
@@ -482,11 +508,14 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       // Remap sources, in case we split any live ranges.
       // Then process killed/next-use info.
       foreach_valid_arg(IROp, i, Arg) {
+        LOGMAN_THROW_AA_FMT(IsInRegisterFile(IR.GetNode(Arg)), "Filled");
+
         const auto Remapped = SSAToNewSSA.at(Arg.ID().Value);
         if (Remapped != nullptr) {
           IREmit->ReplaceNodeArgument(CodeNode, i, Remapped);
         }
 
+#if 0
         SourceIndex--;
         LOGMAN_THROW_AA_FMT(SourceIndex >= 0, "Consistent source count");
 
@@ -498,11 +527,30 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         }
 
         NextUses.at(IR.GetID(Old).Value) = SourcesNextUses[SourceIndex];
+#endif
       }
 
       // Assign destinations
+      printf("dest\n");
       if (GetHasDest(IROp->Op)) {
         AssignReg(CodeNode, IP);
+      }
+      printf("dested\n\n");
+
+      // TODO: Move up so we can share a reg with killed dest
+      // XXX
+      foreach_valid_arg(IROp, i, Arg) {
+        SourceIndex--;
+        LOGMAN_THROW_AA_FMT(SourceIndex >= 0, "Consistent source count");
+
+        auto New = IR.GetNode(IROp->Args[i]);
+        auto Old = Unmap(New);
+
+        if (!SourcesNextUses[SourceIndex]) {
+          FreeReg(SSAToReg.at(IR.GetID(New).Value));
+        }
+
+        NextUses.at(IR.GetID(Old).Value) = SourcesNextUses[SourceIndex];
       }
 
       LOGMAN_THROW_AA_FMT(IP >= 1, "IP relative to end of block, iterating forward");
