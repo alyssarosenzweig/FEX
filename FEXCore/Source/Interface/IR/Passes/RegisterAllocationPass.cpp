@@ -277,6 +277,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     auto Class = &Graph->Set.Classes[Reg.Class == GPRPairClass ? GPRClass : Reg.Class];
     auto R = Reg.Reg;
     auto Mask = (1 << ClassSize((RegisterClassType)Reg.Class)) - 1;
+    printf("r%u, mask %X, avail %X\n", R, Mask, Class->Available);
 
     return (!(Class->Available & (Mask << R))) && Class->RegToSSA[R] == Old;
   };
@@ -363,6 +364,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     LOGMAN_THROW_AA_FMT((Class->Available & RegBits) == RegBits, "Precondition");
     Class->Available &= ~RegBits;
     Class->RegToSSA[Reg.Reg] = Unmap(Node);
+    printf("Assign %u to r%u (%X, %X, %X)\n", Index, Reg.Reg, SizeMask, RegBits, Class->Available);
 
     if (Index >= SSAToReg.size()) {
       SSAToReg.resize(Index + 1, InvalidPhysReg);
@@ -372,7 +374,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   };
 
   // Assign a register for a given Node, spilling if necessary.
-  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, &Remap, &Unmap, InvalidPhysReg, &SetReg](OrderedNode *CodeNode, uint32_t IP) {
+  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, &Remap, &FreeReg, InvalidPhysReg, &SetReg](OrderedNode *CodeNode, uint32_t IP) {
     const auto Node = IR.GetID(CodeNode);
     const auto IROp = IR.GetOp<IROp_Header>(CodeNode);
 
@@ -417,6 +419,8 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       // room for the pair.
 
       // First, find a free scalar. There must be at least 2.
+      Available = Class->Available;
+      printf("%X\n", Available);
       unsigned Hole = std::countr_zero(Available);
       LOGMAN_THROW_AA_FMT(Class->Available & (1 << Hole), "Definition");
 
@@ -433,15 +437,33 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       IREmit->SetWriteCursorBefore(CodeNode);
       auto Old = Class->RegToSSA[Blocked];
       auto Copy = IREmit->_Copy(Old);
+      printf("Copying %u(%u) -> %u(%u)\n", IR.GetID(Old).Value, Blocked, IR.GetID(Copy).Value, NewReg);
 
       Remap(Old, Copy);
+      FreeReg(PhysicalRegister(GPRClass, Blocked));
       SetReg(Copy, Class, PhysicalRegister(GPRClass, NewReg));
+
+      // TODO: Deduplicate me!!
+      Available = Class->Available;
+
+      // Limit Available to only valid base registers for pairs
+      if (Pair) {
+        // Only choose register R if R and R + 1 are both free.
+        Available &= (Available >> 1);
+
+        // Only consider aligned registers
+        Available &= EVEN_BITS;
+      }
     }
+
+    LOGMAN_THROW_AA_FMT(Available != 0, "Post-condition of spill and shuffle");
+    printf("Now %u\n", Available);
 
     // Assign a free register in the appropriate class
     // Now that we have split live ranges, this must succeed.
     unsigned Reg = std::countr_zero(Available);
     SetReg(CodeNode, Class, PhysicalRegister(OrigClassType, Reg));
+    printf("And Now %u\n", Class->Available);
   };
 
   for (auto [BlockNode, BlockHeader] : IR.GetBlocks()) {
@@ -514,6 +536,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
     // Forward pass: Assign registers, spilling as we go.
     for (auto [CodeNode, IROp] : IR.GetCode(BlockNode)) {
+      printf("enter %X\n", Graph->Set.Classes[GPRClass].Available);
       LOGMAN_THROW_AA_FMT(IROp->Op != OP_SPILLREGISTER &&
                           IROp->Op != OP_FILLREGISTER,
                           "Spills/fills inserted before the node,"
@@ -561,6 +584,15 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       foreach_valid_arg(IROp, i, Arg) {
         SourceIndex--;
         LOGMAN_THROW_AA_FMT(SourceIndex >= 0, "Consistent source count");
+
+        // TODO: Would rather not remap twice? but needed if AssignReg shuffles
+        // a source.
+        const auto Remapped = SSAToNewSSA.at(Arg.ID().Value);
+        if (Remapped != nullptr) {
+          IREmit->ReplaceNodeArgument(CodeNode, i, Remapped);
+        }
+
+        // TODO: special handling for clobbered killed sources?
 
         auto New = IR.GetNode(IROp->Args[i]);
         auto Old = Unmap(New);
