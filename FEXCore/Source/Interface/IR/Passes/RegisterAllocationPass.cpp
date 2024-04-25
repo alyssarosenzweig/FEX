@@ -587,8 +587,8 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
         // TODO: Would rather not remap twice? but needed if AssignReg shuffles
         // a source.
-        const auto Remapped = SSAToNewSSA.at(Arg.ID().Value);
-        if (Remapped != nullptr) {
+        const auto Remapped = Map(Unmap(IR.GetNode(Arg)));
+        if (Remapped != IR.GetNode(Arg)) {
           IREmit->ReplaceNodeArgument(CodeNode, i, Remapped);
         }
 
