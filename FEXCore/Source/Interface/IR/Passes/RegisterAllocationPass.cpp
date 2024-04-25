@@ -391,7 +391,30 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
     if (!Available) {
       LOGMAN_THROW_AA_FMT(OrigClassType == GPRPairClass, "Already spilled");
-      /* TODO: Live range split */
+
+      // Even though there are enough registers, the register file is
+      // fragmented. Pick a scalar that is blocking a pair, and evict it to make
+      // room for the pair.
+
+      // First, find a free scalar. There must be at least 2.
+      unsigned Hole = std::countr_zero(Available);
+      LOGMAN_THROW_AA_FMT(Class->Available & (1 << Hole), "Definition");
+
+      // Its neighbour is blocking the pair.
+      unsigned Blocked = Hole ^ 1;
+      LOGMAN_THROW_AA_FMT(!(Class->Available & (1 << Blocked)), "Invariant");
+
+      // We need to evict it find out where.
+      uint32_t AvailableAfter = Available & ~(1 << Hole);
+      unsigned NewReg = std::countr_zero(AvailableAfter);
+      LOGMAN_THROW_AA_FMT(Class->Available & (1 << NewReg), "Ensured space");
+
+      // Now just evict.
+      IREmit->SetWriteCursorBefore(CodeNode);
+      auto Copy = nullptr/* TODO */;
+
+      Remap(Old, Fill);
+      /* TODO: set register*/
       abort();
     }
 
