@@ -203,7 +203,10 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   };
 
   // Record a remapping of Old to New.
-  auto Remap = [&IR, &SSAToNewSSA, &NewSSAToSSA, &Map, &Unmap](OrderedNode *Old, OrderedNode *New) {
+  auto Remap = [&IR, &SSAToNewSSA, &NewSSAToSSA, &Map, &Unmap, &IsOld](OrderedNode *Old, OrderedNode *New) {
+    LOGMAN_THROW_AA_FMT(IsOld(Old), "Pre-condition");
+    LOGMAN_THROW_AA_FMT(!IsOld(New), "Pre-condition");
+
     auto OldID = IR.GetID(Old).Value;
     auto NewID = IR.GetID(New).Value;
 
@@ -351,7 +354,25 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     FreeReg(Reg);
   };
 
-  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, &Unmap, InvalidPhysReg](OrderedNode *CodeNode, uint32_t IP) {
+  // Record a given assignment of register Reg to Node.
+  auto SetReg = [&IR, &Unmap, &SSAToReg, InvalidPhysReg](OrderedNode *Node, struct RegisterClass *Class, PhysicalRegister Reg) {
+    uint32_t Index = IR.GetID(Node).Value;
+    uint32_t SizeMask = (Reg.Class == GPRPairClass) ? 0b11 : 0b1;
+    uint32_t RegBits = SizeMask << Reg.Reg;
+
+    LOGMAN_THROW_AA_FMT((Class->Available & RegBits) == RegBits, "Precondition");
+    Class->Available &= ~RegBits;
+    Class->RegToSSA[Reg.Reg] = Unmap(Node);
+
+    if (Index >= SSAToReg.size()) {
+      SSAToReg.resize(Index + 1, InvalidPhysReg);
+    }
+
+    SSAToReg.at(Index) = Reg;
+  };
+
+  // Assign a register for a given Node, spilling if necessary.
+  auto AssignReg = [this, &IR, IREmit, &SSAToReg, &SpillReg, &ClassSize, &Remap, &Unmap, InvalidPhysReg, &SetReg](OrderedNode *CodeNode, uint32_t IP) {
     const auto Node = IR.GetID(CodeNode);
     const auto IROp = IR.GetOp<IROp_Header>(CodeNode);
 
@@ -378,7 +399,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
     // Now that we've spilled, there are enough registers. Try to assign one.
     uint32_t Available = Class->Available;
-    uint32_t SizeMask = Pair ? 0b11 : 0b1;
 
     // Limit Available to only valid base registers for pairs
     if (Pair) {
@@ -404,34 +424,24 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       unsigned Blocked = Hole ^ 1;
       LOGMAN_THROW_AA_FMT(!(Class->Available & (1 << Blocked)), "Invariant");
 
-      // We need to evict it find out where.
+      // Find another free scalar to evict the neighbour
       uint32_t AvailableAfter = Available & ~(1 << Hole);
       unsigned NewReg = std::countr_zero(AvailableAfter);
       LOGMAN_THROW_AA_FMT(Class->Available & (1 << NewReg), "Ensured space");
 
       // Now just evict.
       IREmit->SetWriteCursorBefore(CodeNode);
-      auto Copy = nullptr/* TODO */;
+      auto Old = Class->RegToSSA[Blocked];
+      auto Copy = IREmit->_Copy(Old);
 
-      Remap(Old, Fill);
-      /* TODO: set register*/
-      abort();
+      Remap(Old, Copy);
+      SetReg(Copy, Class, PhysicalRegister(GPRClass, NewReg));
     }
 
     // Assign a free register in the appropriate class
     // Now that we have split live ranges, this must succeed.
     unsigned Reg = std::countr_zero(Available);
-    uint32_t RegBits = SizeMask << Reg;
-
-    LOGMAN_THROW_AA_FMT((Class->Available & RegBits) == RegBits, "Ensured available");
-    Class->Available &= ~RegBits;
-    Class->RegToSSA[Reg] = Unmap(CodeNode);
-
-    if (Node.Value >= SSAToReg.size()) {
-      SSAToReg.resize(Node.Value + 1, InvalidPhysReg);
-    }
-
-    SSAToReg.at(Node.Value) = PhysicalRegister(OrigClassType, Reg);
+    SetReg(CodeNode, Class, PhysicalRegister(OrigClassType, Reg));
   };
 
   for (auto [BlockNode, BlockHeader] : IR.GetBlocks()) {
