@@ -514,20 +514,6 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
         if (Remapped != nullptr) {
           IREmit->ReplaceNodeArgument(CodeNode, i, Remapped);
         }
-
-#if 0
-        SourceIndex--;
-        LOGMAN_THROW_AA_FMT(SourceIndex >= 0, "Consistent source count");
-
-        auto New = IR.GetNode(IROp->Args[i]);
-        auto Old = Unmap(New);
-
-        if (!SourcesNextUses[SourceIndex]) {
-          FreeReg(SSAToReg.at(IR.GetID(New).Value));
-        }
-
-        NextUses.at(IR.GetID(Old).Value) = SourcesNextUses[SourceIndex];
-#endif
       }
 
       // Assign destinations
@@ -537,8 +523,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       }
       printf("dested\n\n");
 
-      // TODO: Move up so we can share a reg with killed dest
-      // XXX
+      // XXX TODO: Move up so we can share a reg with killed dest
       foreach_valid_arg(IROp, i, Arg) {
         SourceIndex--;
         LOGMAN_THROW_AA_FMT(SourceIndex >= 0, "Consistent source count");
