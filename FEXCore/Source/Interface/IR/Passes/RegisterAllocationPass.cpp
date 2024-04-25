@@ -272,15 +272,16 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
     auto Reg = SSAToReg.at(IR.GetID(Map(Old)).Value);
     auto Class = &Graph->Set.Classes[Reg.Class == GPRPairClass ? GPRClass : Reg.Class];
-    auto R = Reg.Reg * ClassSize((RegisterClassType)Reg.Class);
+    auto R = Reg.Reg;
+    auto Mask = (1 << ClassSize((RegisterClassType)Reg.Class)) - 1;
 
-    return (!(Class->Available & (1 << R))) && Class->RegToSSA[R] == Old;
+    return (!(Class->Available & (Mask << R))) && Class->RegToSSA[R] == Old;
   };
 
   auto FreeReg = [this](auto Reg){
     bool Pair = Reg.Class == GPRPairClass;
     auto ClassType = Pair ? GPRClass : Reg.Class;
-    auto RegBits = Pair ? (0x3 << (2 * Reg.Reg)) : (1 << Reg.Reg);
+    auto RegBits = (Pair ? 0x3 : 0x1) << Reg.Reg;
 
     auto Class = &Graph->Set.Classes[ClassType];
     LOGMAN_THROW_AA_FMT(!(Class->Available & RegBits), "Register double-free");
@@ -407,8 +408,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       SSAToReg.resize(Node.Value + 1, InvalidPhysReg);
     }
 
-    SSAToReg.at(Node.Value) =
-      PhysicalRegister(OrigClassType, Pair ? (Reg >> 1) : Reg);
+    SSAToReg.at(Node.Value) = PhysicalRegister(OrigClassType, Reg);
   };
 
   for (auto [BlockNode, BlockHeader] : IR.GetBlocks()) {
