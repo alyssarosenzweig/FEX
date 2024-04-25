@@ -415,7 +415,8 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
     for (auto &Class : Graph->Set.Classes) {
       // At the start of each block, all registers are available. Initialize the
       // available bit set. This is a bit set.
-      Class.Available = (1 << 8 /*Class.Count*/) - 1;
+      //Class.Available = (1 << 8 /*Class.Count*/) - 1;
+      Class.Available = (1 << Class.Count) - 1;
     }
 
     // Stream of sources in the block, backwards. (First element is the last
