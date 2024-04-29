@@ -376,16 +376,16 @@ OrderedNode* OpDispatchBuilder::CalculateFlags_SBB(uint8_t SrcSize, OrderedNode*
     // Rectify output carry
     CarryInvert();
   } else {
+    OrderedNode* ResPlusCF = _Sub(OpSize, Src1, Src2);
+
     auto CF = GetRFLAG(FEXCore::X86State::RFLAG_CF_RAW_LOC);
-    Res = _Sub(OpSize, Src1, _Add(OpSize, Src2, CF));
-    Res = _Bfe(OpSize, SrcSize * 8, 0, Res);
+    Res = _Sub(OpSize, ResPlusCF, CF);
 
     // Need to zero-extend for correct comparisons below
+    ResPlusCF = _Bfe(OpSize, SrcSize * 8, 0, ResPlusCF);
     Src1 = _Bfe(OpSize, SrcSize * 8, 0, Src1);
 
-    auto SelectOpLT = _Select(FEXCore::IR::COND_UGT, Res, Src1, One, Zero);
-    auto SelectOpLE = _Select(FEXCore::IR::COND_UGE, Res, Src1, One, Zero);
-    auto SelectCF = _Select(FEXCore::IR::COND_EQ, CF, One, SelectOpLE, SelectOpLT);
+    auto SelectCF = _Select(FEXCore::IR::COND_UGT, ResPlusCF, Src1, One, Zero);
 
     SetNZ_ZeroCV(SrcSize, Res);
     SetRFLAG<FEXCore::X86State::RFLAG_CF_RAW_LOC>(SelectCF);
