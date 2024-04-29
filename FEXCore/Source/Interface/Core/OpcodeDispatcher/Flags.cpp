@@ -340,16 +340,14 @@ OrderedNode* OpDispatchBuilder::CalculateFlags_ADC(uint8_t SrcSize, OrderedNode*
     HandleNZCV_RMW();
     Res = _AdcWithFlags(OpSize, Src1, Src2);
   } else {
-    auto CF = GetRFLAG(FEXCore::X86State::RFLAG_CF_RAW_LOC);
+    OrderedNode* Src2PlusCF = _Adc(OpSize, _Constant(0), Src2);
     Res = _Adc(OpSize, Src1, Src2);
     Res = _Bfe(OpSize, SrcSize * 8, 0, Res);
 
     // Need to zero-extend for correct comparisons below
-    Src2 = _Bfe(OpSize, SrcSize * 8, 0, Src2);
+    Src2PlusCF = _Bfe(OpSize, SrcSize * 8, 0, Src2PlusCF);
 
-    auto SelectOpLT = _Select(FEXCore::IR::COND_ULT, Res, Src2, One, Zero);
-    auto SelectOpLE = _Select(FEXCore::IR::COND_ULE, Res, Src2, One, Zero);
-    auto SelectCF = _Select(FEXCore::IR::COND_EQ, CF, One, SelectOpLE, SelectOpLT);
+    auto SelectCF = _Select(FEXCore::IR::COND_ULT, Res, Src2PlusCF, One, Zero);
 
     SetNZ_ZeroCV(SrcSize, Res);
     SetRFLAG<FEXCore::X86State::RFLAG_CF_RAW_LOC>(SelectCF);
