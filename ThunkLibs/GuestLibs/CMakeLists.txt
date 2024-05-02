@@ -182,8 +182,8 @@ if (BITNESS EQUAL 64)
   #generate(libfex_malloc)
   #add_guest_lib(fex_malloc)
 
-  generate(libasound ${CMAKE_CURRENT_SOURCE_DIR}/../libasound/libasound_interface.cpp)
-  add_guest_lib(asound "libasound.so.2")
+  #generate(libasound ${CMAKE_CURRENT_SOURCE_DIR}/../libasound/libasound_interface.cpp)
+  #add_guest_lib(asound "libasound.so.2")
 
   generate(libEGL ${CMAKE_CURRENT_SOURCE_DIR}/../libEGL/libEGL_interface.cpp)
   add_guest_lib(EGL "libEGL.so.1")

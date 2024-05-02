@@ -120,8 +120,8 @@ foreach(GUEST_BITNESS IN LISTS BITNESS_LIST)
   #generate(libfex_malloc)
   #add_host_lib(fex_malloc ${GUEST_BITNESS})
 
-  generate(libasound ${CMAKE_CURRENT_SOURCE_DIR}/../libasound/libasound_interface.cpp ${GUEST_BITNESS})
-  add_host_lib(asound ${GUEST_BITNESS})
+  #generate(libasound ${CMAKE_CURRENT_SOURCE_DIR}/../libasound/libasound_interface.cpp ${GUEST_BITNESS})
+  #add_host_lib(asound ${GUEST_BITNESS})
 
   generate(libEGL ${CMAKE_CURRENT_SOURCE_DIR}/../libEGL/libEGL_interface.cpp ${GUEST_BITNESS})
   add_host_lib(EGL ${GUEST_BITNESS})
