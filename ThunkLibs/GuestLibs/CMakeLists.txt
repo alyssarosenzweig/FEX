@@ -68,6 +68,7 @@ function(generate NAME SOURCE_FILE)
   if (BITNESS EQUAL 32)
     set(BITNESS_FLAGS "-for-32bit-guest")
     set(BITNESS_FLAGS2 "-m32" "--target=i386-linux-unknown" 
+      "-I/usr/lib/zig/libc/include/i386-linux-gnu"
       "-I/usr/lib/zig/libc/include/x86-linux-gnu"
       "-I/usr/lib/zig/libc/include/any-linux-any"
       "-I/usr/lib/zig/libc/include/generic-glibc")
