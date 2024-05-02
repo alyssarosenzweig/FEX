@@ -192,8 +192,8 @@ template<>
 struct fex_gen_config<glXQueryExtension> {};
 template<>
 struct fex_gen_config<glXQueryVersion> {};
-template<>
-struct fex_gen_config<glXAllocateMemoryNV> {};
+//template<>
+//struct fex_gen_config<glXAllocateMemoryNV> {};
 template<>
 struct fex_gen_config<glXCopyContext> {};
 template<>
@@ -206,8 +206,8 @@ template<>
 struct fex_gen_config<glXDestroyPixmap> {};
 template<>
 struct fex_gen_config<glXDestroyWindow> {};
-template<>
-struct fex_gen_config<glXFreeMemoryNV> {};
+//template<>
+//struct fex_gen_config<glXFreeMemoryNV> {};
 template<>
 struct fex_gen_config<glXGetSelectedEvent> {};
 template<>
@@ -6170,10 +6170,11 @@ struct fex_gen_config<glBlendEquationSeparateATI> {};
 // glx.h
 template<>
 struct fex_gen_config<glXWaitX> {};
-template<>
-struct fex_gen_config<glXBindTexImageARB> {};
-template<>
-struct fex_gen_config<glXReleaseTexImageARB> {};
+#if 0
+//template<>
+//struct fex_gen_config<glXBindTexImageARB> {};
+//template<>
+//struct fex_gen_config<glXReleaseTexImageARB> {};
 template<>
 struct fex_gen_config<glXDrawableAttribARB> {};
 template<>
@@ -6184,6 +6185,7 @@ template<>
 struct fex_gen_config<glXEndFrameTrackingMESA> {};
 template<>
 struct fex_gen_config<glXQueryFrameTrackingMESA> {};
+#endif
 
 // glxext.h
 template<>
