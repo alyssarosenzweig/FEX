@@ -243,7 +243,8 @@ if (BITNESS EQUAL 32)
   #  336:   c3                      ret
   #  337:   90                      nop
   #  338:   0f 0b                   ud2
-  target_compile_options(VDSO-guest PRIVATE "-fno-pic")
+  # XXX: 32-bit broken
+  #target_compile_options(VDSO-guest PRIVATE "-fno-pic")
 endif()
 
 if (BUILD_FEX_LINUX_TESTS)
