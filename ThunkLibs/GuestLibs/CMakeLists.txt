@@ -71,13 +71,16 @@ function(generate NAME SOURCE_FILE)
       "-I/usr/lib/zig/libc/include/i386-linux-gnu"
       "-I/usr/lib/zig/libc/include/x86-linux-gnu"
       "-I/usr/lib/zig/libc/include/any-linux-any"
-      "-I/usr/lib/zig/libc/include/generic-glibc")
+      "-I/usr/lib/zig/libc/include/generic-glibc"
+      "-I/usr/lib/zig/libcxx/include/")
   else()
     set(BITNESS_FLAGS "")
     set(BITNESS_FLAGS2 "--target=x86_64-linux-unknown"
       "-I/usr/lib/zig/libc/include/x86_64-linux-gnu"
       "-I/usr/lib/zig/libc/include/any-linux-any"
-      "-I/usr/lib/zig/libc/include/generic-glibc")
+      "-I/usr/lib/zig/libc/include/generic-glibc"
+      "-I/usr/lib/zig/libcxx/include/"
+    )
   endif()
 
   add_custom_command(
