@@ -375,6 +375,10 @@ T* unwrap_host(repack_wrapper<T*, T2>& val) {
   return val;
 }
 
+long*& unwrap_host(host_layout<long long*>& val) {
+  return (long*&)val.data;
+}
+
 unsigned long*& unwrap_host(host_layout<unsigned long long*>& val) {
   return (unsigned long*&)val.data;
 }
