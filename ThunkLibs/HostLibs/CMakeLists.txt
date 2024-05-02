@@ -43,9 +43,20 @@ function(generate NAME SOURCE_FILE GUEST_BITNESS)
 
   file(MAKE_DIRECTORY "${OUTFOLDER}")
 
-  set (BITNESS_FLAGS "")
-  if (GUEST_BITNESS EQUAL 32)
-    set (BITNESS_FLAGS "-for-32bit-guest")
+  if (BITNESS EQUAL 32)
+    set(BITNESS_FLAGS
+      "-I/usr/lib/zig/libc/include/i386-linux-gnu"
+      "-I/usr/lib/zig/libc/include/x86-linux-gnu"
+      "-I/usr/lib/zig/libc/include/any-linux-any"
+      "-I/usr/lib/zig/libc/include/generic-glibc"
+      "-I/usr/lib/zig/libcxx/include/")
+  else()
+    set(BITNESS_FLAGS
+      "-I/usr/lib/zig/libc/include/x86_64-linux-gnu"
+      "-I/usr/lib/zig/libc/include/any-linux-any"
+      "-I/usr/lib/zig/libc/include/generic-glibc"
+      "-I/usr/lib/zig/libcxx/include/"
+    )
   endif()
 
   add_custom_command(
