@@ -231,7 +231,7 @@ struct host_layout {
   // Notably, this is useful for handling "long"/"long long" on 64-bit, as well
   // as uint8_t/char.
   template<typename U>
-  explicit host_layout(const guest_layout<U>& from)
+  host_layout(const guest_layout<U>& from)
     requires (std::is_integral_v<U> && sizeof(U) <= sizeof(T) && std::is_convertible_v<T, U> && std::is_signed_v<T> == std::is_signed_v<U>)
     : data {static_cast<T>(from.data)} {}
 };
@@ -373,6 +373,10 @@ T& unwrap_host(host_layout<T>& val) {
 template<typename T, typename T2>
 T* unwrap_host(repack_wrapper<T*, T2>& val) {
   return val;
+}
+
+unsigned long*& unwrap_host(host_layout<unsigned long long*>& val) {
+  return (unsigned long*&)val.data;
 }
 
 template<typename T>
