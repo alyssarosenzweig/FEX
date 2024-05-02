@@ -44,15 +44,16 @@ function(generate NAME SOURCE_FILE GUEST_BITNESS)
   file(MAKE_DIRECTORY "${OUTFOLDER}")
 
   if (BITNESS EQUAL 32)
-    set(BITNESS_FLAGS
-      "-for-32bit-guest"
+    set(BITNESS_FLAGS "-for-32bit-guest")
+    set(BITNESS_FLAGS2
       "-I/usr/lib/zig/libc/include/i386-linux-gnu"
       "-I/usr/lib/zig/libc/include/x86-linux-gnu"
       "-I/usr/lib/zig/libc/include/any-linux-any"
       "-I/usr/lib/zig/libc/include/generic-glibc"
       "-I/usr/lib/zig/libcxx/include/")
   else()
-    set(BITNESS_FLAGS
+    set(BITNESS_FLAGS "")
+    set(BITNESS_FLAGS2
       "-I/usr/lib/zig/libc/include/x86_64-linux-gnu"
       "-I/usr/lib/zig/libc/include/any-linux-any"
       "-I/usr/lib/zig/libc/include/generic-glibc"
@@ -64,7 +65,8 @@ function(generate NAME SOURCE_FILE GUEST_BITNESS)
     OUTPUT "${OUTFILE}"
     DEPENDS "${SOURCE_FILE}"
     DEPENDS thunkgen
-    COMMAND thunkgen "${SOURCE_FILE}" "${NAME}" "-host" "${OUTFILE}" ${BITNESS_FLAGS} -- -std=c++20
+    COMMAND thunkgen "${SOURCE_FILE}" "${NAME}" "-host" "${OUTFILE}"
+    ${BITNESS_FLAGS} -- ${BITNESS_FLAGS2} -std=c++20
       # Expand compile definitions to space-separated list of -D parameters
       "$<$<BOOL:${compile_prop}>:;-D$<JOIN:${compile_prop},;-D>>"
       # Expand include directories to space-separated list of -isystem parameters
