@@ -5,8 +5,8 @@ desc: Depends on glXGetProcAddress thunk
 $end_info$
 */
 
-#include <GL/glx.h>
-#include <EGL/egl.h>
+#include </usr/include/GL/glx.h>
+#include </usr/include/EGL/egl.h>
 
 #include <stdio.h>
 #include <cstring>

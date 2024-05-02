@@ -5,7 +5,7 @@ $end_info$
 */
 
 extern "C" {
-#include <alsa/asoundlib.h>
+#include </usr/include/alsa/asoundlib.h>
 }
 
 #include <stdio.h>

@@ -4,8 +4,8 @@ tags: thunklibs|wayland-client
 $end_info$
 */
 
-#include <wayland-util.h>
-#include <wayland-client.h>
+#include </usr/include/wayland-util.h>
+#include </usr/include/wayland-client.h>
 
 // These must be re-declared with an initializer here, since they don't get exported otherwise
 // NOTE: The initializers for these must be fetched from the host Wayland library, however
