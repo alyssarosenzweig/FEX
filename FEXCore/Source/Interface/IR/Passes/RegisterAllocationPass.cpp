@@ -570,6 +570,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
             AssignReg(Copy, IROp);
           }
         } else if (IROp->Op == OP_LOADREGISTER) {
+          // We just ensured load registers are safe to coalesce, so fix up.
           Class->Available |= RegBit;
         }
       }
