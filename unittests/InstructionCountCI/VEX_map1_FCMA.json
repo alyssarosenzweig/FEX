@@ -20,7 +20,7 @@
       ]
     },
     "vaddsubpd ymm0, ymm0, ymm2": {
-      "ExpectedInstructionCount": 3,
+      "ExpectedInstructionCount": 5,
       "Comment": [
         "Aliasing source and destination",
         "Map 1 0b01 0xd0 256-bit"
@@ -28,7 +28,9 @@
       "ExpectedArm64ASM": [
         "movprfx z2, z18",
         "ext z2.b, z2.b, z18.b, #8",
-        "fcadd z16.d, p7/m, z16.d, z2.d, #90"
+        "movprfx z3, z16",
+        "fcadd z3.d, p7/m, z3.d, z2.d, #90",
+        "mov z16.d, p7/m, z3.d"
       ]
     },
     "vaddsubpd ymm0, ymm1, ymm0": {
@@ -79,14 +81,16 @@
       ]
     },
     "vaddsubps ymm0, ymm0, ymm2": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 4,
       "Comment": [
         "Aliasing source and destination",
         "Map 1 0b11 0xd0 256-bit"
       ],
       "ExpectedArm64ASM": [
         "revw z2.d, p7/m, z18.d",
-        "fcadd z16.s, p7/m, z16.s, z2.s, #90"
+        "movprfx z3, z16",
+        "fcadd z3.s, p7/m, z3.s, z2.s, #90",
+        "mov z16.d, p7/m, z3.d"
       ]
     },
     "vaddsubps ymm0, ymm1, ymm2": {

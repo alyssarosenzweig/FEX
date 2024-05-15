@@ -10,113 +10,123 @@
   },
   "Instructions": {
     "vroundss xmm0, xmm1, 00000000b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "nearest rounding",
         "Map 3 0b01 0x0a 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frintn s16, s16"
+        "mov v2.16b, v16.16b",
+        "frintn s2, s16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundss xmm0, xmm1, 00000001b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "-inf rounding",
         "Map 3 0b01 0x0a 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frintm s16, s16"
+        "mov v2.16b, v16.16b",
+        "frintm s2, s16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundss xmm0, xmm1, 00000010b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "+inf rounding",
         "Map 3 0b01 0x0a 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frintp s16, s16"
+        "mov v2.16b, v16.16b",
+        "frintp s2, s16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundss xmm0, xmm1, 00000011b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "truncate rounding",
         "Map 3 0b01 0x0a 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frintz s16, s16"
+        "mov v2.16b, v16.16b",
+        "frintz s2, s16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundss xmm0, xmm1, 00000100b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "host mode rounding",
         "Map 3 0b01 0x0a 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frinti s16, s16"
+        "mov v2.16b, v16.16b",
+        "frinti s2, s16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundsd xmm0, xmm1, 00000000b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "nearest rounding",
         "Map 3 0b01 0x0b 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frintn d16, d16"
+        "mov v2.16b, v16.16b",
+        "frintn d2, d16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundsd xmm0, xmm1, 00000001b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "-inf rounding",
         "Map 3 0b01 0x0b 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frintm d16, d16"
+        "mov v2.16b, v16.16b",
+        "frintm d2, d16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundsd xmm0, xmm1, 00000010b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "+inf rounding",
         "Map 3 0b01 0x0b 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frintp d16, d16"
+        "mov v2.16b, v16.16b",
+        "frintp d2, d16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundsd xmm0, xmm1, 00000011b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "truncate rounding",
         "Map 3 0b01 0x0b 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frintz d16, d16"
+        "mov v2.16b, v16.16b",
+        "frintz d2, d16",
+        "mov z16.d, p7/m, z2.d"
       ]
     },
     "vroundsd xmm0, xmm1, 00000100b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "host mode rounding",
         "Map 3 0b01 0x0b 128-bit"
       ],
       "ExpectedArm64ASM": [
-        "mov v16.16b, v16.16b",
-        "frinti d16, d16"
+        "mov v2.16b, v16.16b",
+        "frinti d2, d16",
+        "mov z16.d, p7/m, z2.d"
       ]
     }
   }

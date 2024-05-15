@@ -12,41 +12,45 @@
   },
   "Instructions": {
     "pclmulqdq xmm0, xmm1, 00000b": {
-      "ExpectedInstructionCount": 1,
+      "ExpectedInstructionCount": 2,
       "Comment": [
         "0x66 0x0f 0x3a 0x44"
       ],
       "ExpectedArm64ASM": [
-        "pmull v16.1q, v16.1d, v17.1d"
+        "pmull v2.1q, v16.1d, v17.1d",
+        "mov v16.16b, v2.16b"
       ]
     },
     "pclmulqdq xmm0, xmm1, 00001b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "0x66 0x0f 0x3a 0x44"
       ],
       "ExpectedArm64ASM": [
         "dup v0.2d, v16.d[1]",
-        "pmull v16.1q, v0.1d, v17.1d"
+        "pmull v2.1q, v0.1d, v17.1d",
+        "mov v16.16b, v2.16b"
       ]
     },
     "pclmulqdq xmm0, xmm1, 10000b": {
-      "ExpectedInstructionCount": 2,
+      "ExpectedInstructionCount": 3,
       "Comment": [
         "0x66 0x0f 0x3a 0x44"
       ],
       "ExpectedArm64ASM": [
         "dup v0.2d, v17.d[1]",
-        "pmull v16.1q, v0.1d, v16.1d"
+        "pmull v2.1q, v0.1d, v16.1d",
+        "mov v16.16b, v2.16b"
       ]
     },
     "pclmulqdq xmm0, xmm1, 10001b": {
-      "ExpectedInstructionCount": 1,
+      "ExpectedInstructionCount": 2,
       "Comment": [
         "0x66 0x0f 0x3a 0x44"
       ],
       "ExpectedArm64ASM": [
-        "pmull2 v16.1q, v16.2d, v17.2d"
+        "pmull2 v2.1q, v16.2d, v17.2d",
+        "mov v16.16b, v2.16b"
       ]
     },
     "aeskeygenassist xmm0, xmm1, 0": {
