@@ -106,6 +106,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
 
   // Map of Old nodes to their preferred register, to coalesce load/store reg.
   fextl::vector<PhysicalRegister> PreferredReg(IR.GetSSACount(), PhysicalRegister::Invalid());
+  fextl::vector<bool> PreferredEligible(IR.GetSSACount(), false);
 
   // FEX's original RA could only assign a single register to a given def for
   // its entire live range, and this limitation is baked deep into the IR.
@@ -375,7 +376,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
   };
 
   // Assign a register for a given Node, spilling if necessary.
-  auto AssignReg = [this, &IR, IREmit, &SpillReg, &Remap, &FreeReg, &SetReg, &Map, &AvailableMask, &PreferredReg,
+  auto AssignReg = [this, &IR, IREmit, &SpillReg, &Remap, &FreeReg, &SetReg, &Map, &AvailableMask, &PreferredReg, &PreferredEligible,
                     &DecodeReg](OrderedNode* CodeNode, IROp_Header* Pivot) {
     const auto Node = IR.GetID(CodeNode);
     LOGMAN_THROW_AA_FMT(Node.IsValid(), "Node must be valid");
@@ -385,7 +386,7 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
       auto Reg = PreferredReg[Node.Value];
       auto [Class, RegBits] = DecodeReg(Reg);
 
-      if (!Reg.IsInvalid() && (Class->Available & RegBits) == RegBits) {
+      if (!Reg.IsInvalid() && (Class->Available & RegBits) == RegBits && PreferredEligible[Node.Value]) {
         SetReg(CodeNode, Reg);
         return;
       }
@@ -515,12 +516,20 @@ bool ConstrainedRAPass::Run(IREmitter* IREmit) {
           // all loads in the block. We initialized Available to 0 above, so set
           // Available for store but clear for load while iterating backwards.
           auto [Class, RegBit] = DecodeReg(Reg);
+          Class->RegToSSA[Reg.Reg] = CodeNode;
 
           if (IROp->Op == OP_STOREREGISTER) {
             Class->Available |= RegBit;
           } else {
             Class->Available &= ~RegBit;
           }
+        }
+
+        if (auto Reg = PreferredReg[IR.GetID(CodeNode).Value]; !Reg.IsInvalid()) {
+          auto [Class, RegBit] = DecodeReg(Reg);
+          auto [SRA, _] = DecodeSRA(Class->RegToSSA[Reg.Reg]);
+
+          PreferredEligible[IR.GetID(CodeNode).Value] = SRA == CodeNode;
         }
 
         // IP is relative to block end and we iterate backwards, so increment.
