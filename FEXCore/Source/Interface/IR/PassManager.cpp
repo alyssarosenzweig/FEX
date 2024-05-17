@@ -102,7 +102,7 @@ void PassManager::AddDefaultValidationPasses() {
 }
 
 void PassManager::InsertRegisterAllocationPass() {
-  InsertPass(IR::CreateRegisterAllocationPass(GetPass("Compaction")), "RA");
+  InsertPass(IR::CreateRegisterAllocationPass(), "RA");
 }
 
 bool PassManager::Run(IREmitter* IREmit) {
