@@ -5052,7 +5052,6 @@ void OpDispatchBuilder::InvalidOp(OpcodeArgs) {
 void OpDispatchBuilder::InstallHostSpecificOpcodeHandlers() {
   static bool Initialized = false;
   if (!CTX || Initialized) {
-    // IRCompaction doesn't set a CTX and doesn't need this anyway
     return;
   }
 #define OPD(prefix, opcode) (((prefix) << 8) | opcode)
