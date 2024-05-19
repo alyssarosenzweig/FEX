@@ -26,10 +26,10 @@ $end_info$
 namespace FEXCore::IR::Validation {
 class ValueDominanceValidation final : public FEXCore::IR::Pass {
 public:
-  bool Run(IREmitter* IREmit) override;
+  void Run(IREmitter* IREmit) override;
 };
 
-bool ValueDominanceValidation::Run(IREmitter* IREmit) {
+void ValueDominanceValidation::Run(IREmitter* IREmit) {
   FEXCORE_PROFILE_SCOPED("PassManager::ValueDominanceValidation");
 
   bool HadError = false;
@@ -95,8 +95,6 @@ bool ValueDominanceValidation::Run(IREmitter* IREmit) {
     LogMan::Msg::EFmt("{}", Out.str());
     LOGMAN_MSG_A_FMT("Encountered IR validation Error");
   }
-
-  return false;
 }
 
 fextl::unique_ptr<FEXCore::IR::Pass> CreateValueDominanceValidation() {
