@@ -1019,9 +1019,6 @@ void ConstProp::Run(IREmitter* IREmit) {
 
   auto CurrentIR = IREmit->ViewIR();
 
-  HandleConstantPools(IREmit, CurrentIR);
-  LoadMemStoreMemImmediatePooling(IREmit, CurrentIR);
-
   for (auto [CodeNode, IROp] : CurrentIR.GetAllCode()) {
     ConstantPropagation(IREmit, CurrentIR, CodeNode, IROp);
   }
@@ -1029,6 +1026,9 @@ void ConstProp::Run(IREmitter* IREmit) {
   if (InlineConstants) {
     ConstantInlining(IREmit, CurrentIR);
   }
+
+  HandleConstantPools(IREmit, CurrentIR);
+  LoadMemStoreMemImmediatePooling(IREmit, CurrentIR);
 }
 
 fextl::unique_ptr<FEXCore::IR::Pass> CreateConstProp(bool InlineConstants, bool SupportsTSOImm9, bool Is64BitMode) {
