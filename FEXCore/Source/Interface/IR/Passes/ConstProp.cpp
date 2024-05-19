@@ -339,8 +339,8 @@ void ConstProp::ConstantPropagation(IREmitter* IREmit, const IRListView& Current
   foreach_arg(IROp, s) {
     if (IROp->Args[s].IsInvalid()) continue;
 
-    //uint32_t ID = CurrentIR.GetID(CurrentIR.GetNode(IROp->Args[s])).Value;
-    uint32_t ID = IROp->Args[s].ID().Value;
+    uint32_t ID = CurrentIR.GetID(CurrentIR.GetNode(IROp->Args[s])).Value;
+    //uint32_t ID = IROp->Args[s].ID().Value;
 
     LOGMAN_THROW_AA_FMT(ID < Remapping.size(), "Not remapped yet");
     OrderedNode *Remapped = Remapping[ID];
