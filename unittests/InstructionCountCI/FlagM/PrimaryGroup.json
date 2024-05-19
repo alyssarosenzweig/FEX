@@ -36,8 +36,8 @@
       "ExpectedInstructionCount": 14,
       "Comment": "GROUP1 0x80 /2",
       "ExpectedArm64ASM": [
-        "mov x27, x4",
         "mov w20, #0x1",
+        "mov x27, x4",
         "adc w20, wzr, w20",
         "add w21, w4, w20",
         "uxtb w26, w21",
@@ -139,8 +139,8 @@
       "ExpectedInstructionCount": 14,
       "Comment": "GROUP1 0x80 /2",
       "ExpectedArm64ASM": [
-        "mvn w27, w4",
         "mov w20, #0xff",
+        "mvn w27, w4",
         "adc w20, wzr, w20",
         "add w21, w4, w20",
         "uxtb w26, w21",
