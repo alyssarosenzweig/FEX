@@ -8,7 +8,6 @@ $end_info$
 #include "Interface/IR/Passes/RegisterAllocationPass.h"
 #include "Interface/IR/IR.h"
 #include "Interface/IR/IREmitter.h"
-#include "Interface/IR/RegisterAllocationData.h"
 #include "Interface/IR/Passes.h"
 #include <FEXCore/IR/IR.h>
 #include <FEXCore/Utils/LogManager.h>
@@ -216,7 +215,7 @@ private:
     LOGMAN_THROW_A_FMT(IsOld(Old), "Invariant2");
 
     for (auto s = 0; s < IR::GetRAArgs(I->Op); ++s) {
-      Ref Node = IR->GetNode(I->Args[s]);
+      Ref Node = I->Src(s);
       LOGMAN_THROW_A_FMT(IsOld(Node), "not yet mapped");
 
       if (Node == Old) {
@@ -401,7 +400,7 @@ private:
 
     // Try to handle tied registers. This can fail, the JIT will insert moves.
     if (int TiedIdx = IR::TiedSource(IROp->Op); TiedIdx >= 0) {
-      PhysicalRegister Reg = SSAToReg[IROp->Args[TiedIdx].ID().Value];
+      PhysicalRegister Reg = SSAToReg[IROp->Src(TiedIdx).ID];
       RegisterClass* Class = GetClass(Reg);
       uint32_t RegBits = GetRegBits(Reg);
 

@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 
-#include "Interface/IR/RegisterAllocationData.h"
-#include "Interface/IR/IntrusiveIRList.h"
-
 #include <FEXCore/Config/Config.h>
 #include <FEXCore/fextl/map.h>
 #include <FEXCore/fextl/string.h>
@@ -104,7 +101,7 @@ public:
   void WriteFilesWithCode(const Context::AOTIRCodeFileWriterFn& Writer);
 
   struct PreGenerateIRFetchResult {
-    fextl::unique_ptr<IRStorageBase> IR;
+    // fextl::unique_ptr<IRStorageBase> IR;
     FEXCore::Core::DebugData* DebugData {};
     uint64_t StartAddr {};
     uint64_t Length {};
@@ -112,8 +109,9 @@ public:
   [[nodiscard]]
   std::optional<PreGenerateIRFetchResult> PreGenerateIRFetch(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP);
 
+  // XXX: what
   bool PostCompileCode(FEXCore::Core::InternalThreadState* Thread, void* CodePtr, uint64_t GuestRIP, uint64_t StartAddr, uint64_t Length,
-                       fextl::unique_ptr<FEXCore::IR::IRStorageBase> IR, FEXCore::Core::DebugData* DebugData, bool GeneratedIR);
+                       void* /*fextl::unique_ptr<FEXCore::IR::IRStorageBase>*/ IR, FEXCore::Core::DebugData* DebugData, bool GeneratedIR);
 
   AOTIRCacheEntry* LoadAOTIRCacheEntry(const fextl::string& filename);
   void UnloadAOTIRCacheEntry(AOTIRCacheEntry* Entry);

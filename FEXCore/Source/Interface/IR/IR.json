@@ -605,7 +605,7 @@
         "HasSideEffects": true,
         "DestSize": "8"
       },
-      "GPRPair = MemCpy i1:$IsAtomic, u8:$Size, GPR:$Dest, GPR:$Src, GPR:$Length, GPR:$Direction": {
+      "GPRPair = MemCpy i1:$IsAtomic, u8:$Size, GPR:$OldDest, GPR:$Src, GPR:$Length, GPR:$Direction": {
         "Desc": ["Duplicates behaviour of x86 MOVS repeat",
                  "Returns the final addresses of destination and src addresses after they have been incremented or decremented"
                 ],
@@ -923,13 +923,6 @@
         "Desc": ["Generates a 64bit constant inside of a GPR",
                  "Unsupported to create a constant in FPR"
                 ],
-        "DestSize": "8"
-      },
-
-      "InlineConstant i64:$Constant": {
-        "Desc": ["Generates a 64bit constant to be used directly, non-FPR"],
-        "HasSideEffects": true,
-        "RAOverride": "0",
         "DestSize": "8"
       },
 
@@ -1392,7 +1385,7 @@
           "Size == FEXCore::IR::OpSize::i32Bit || Size == FEXCore::IR::OpSize::i64Bit"
         ]
       },
-      "GPR = Bfi OpSize:#Size, u8:$Width, u8:$lsb, GPR:$Dest, GPR:$Src": {
+      "GPR = Bfi OpSize:#Size, u8:$Width, u8:$lsb, GPR:$OldDest, GPR:$Src": {
         "Desc": ["Copies a bitfield from one GPR to another",
                  "The source bitfield is from Src[Width:0]",
                  "The bitfield is copied in to Dest[(Width + lsb):lsb]"
@@ -1403,7 +1396,7 @@
           "Size == FEXCore::IR::OpSize::i32Bit || Size == FEXCore::IR::OpSize::i64Bit"
         ]
       },
-      "GPR = Bfxil OpSize:#Size, u8:$Width, u8:$lsb, GPR:$Dest, GPR:$Src": {
+      "GPR = Bfxil OpSize:#Size, u8:$Width, u8:$lsb, GPR:$OldDest, GPR:$Src": {
         "Desc": ["Copies a bitfield from one GPR to another",
                  "Inserting in to the low bits of the destination",
                  "The source bitfield is from Src[(Width + lsb):lsb]",

@@ -6,9 +6,6 @@ tags: ir|dumper
 $end_info$
 */
 
-#include "Interface/IR/IntrusiveIRList.h"
-#include "Interface/IR/RegisterAllocationData.h"
-
 #include <FEXCore/IR/IR.h>
 #include <FEXCore/fextl/sstream.h>
 
@@ -84,10 +81,9 @@ static void PrintArg(fextl::stringstream* out, [[maybe_unused]] const IRListView
   }
 }
 
-static void PrintArg(fextl::stringstream* out, const IRListView* IR, OrderedNodeWrapper Arg, IR::RegisterAllocationData* RAData) {
-  auto [CodeNode, IROp] = IR->at(Arg)();
-  const auto ArgID = Arg.ID();
-
+static void PrintArg(fextl::stringstream* out, const IRListView* IR, Ref Arg) {
+  /* TODO */
+#if 0
   if (ArgID.IsInvalid()) {
     *out << "%Invalid";
   } else {
@@ -131,6 +127,7 @@ static void PrintArg(fextl::stringstream* out, const IRListView* IR, OrderedNode
       *out << "v" << std::dec << NumElements;
     }
   }
+#endif
 }
 
 static void PrintArg(fextl::stringstream* out, [[maybe_unused]] const IRListView* IR, FEXCore::IR::FenceType Arg) {
@@ -257,7 +254,7 @@ static void PrintArg(fextl::stringstream* out, [[maybe_unused]] const IRListView
   }
 }
 
-void Dump(fextl::stringstream* out, const IRListView* IR, IR::RegisterAllocationData* RAData) {
+void Dump(fextl::stringstream* out, const IRListView* IR) {
   auto HeaderOp = IR->GetHeader();
 
   int8_t CurrentIndent = 0;
@@ -291,7 +288,6 @@ void Dump(fextl::stringstream* out, const IRListView* IR, IR::RegisterAllocation
     ++CurrentIndent;
     for (auto [CodeNode, IROp] : IR->GetCode(BlockNode)) {
       const auto ID = IR->GetID(CodeNode);
-      const auto Name = FEXCore::IR::GetName(IROp->Op);
 
       {
         AddIndent();
@@ -309,6 +305,8 @@ void Dump(fextl::stringstream* out, const IRListView* IR, IR::RegisterAllocation
 
           *out << "%" << std::dec << ID;
 
+          /* TODO */
+#if 0
           if (RAData) {
             auto PhyReg = RAData->GetNodeRegister(ID);
             switch (PhyReg.Class) {
@@ -327,6 +325,7 @@ void Dump(fextl::stringstream* out, const IRListView* IR, IR::RegisterAllocation
               *out << ")";
             }
           }
+#endif
 
           *out << " i" << std::dec << (ElementSize * 8);
 
@@ -353,14 +352,11 @@ void Dump(fextl::stringstream* out, const IRListView* IR, IR::RegisterAllocation
           }
           *out << ") ";
         }
-        *out << Name;
 
 #define IROP_ARGPRINTER_HELPER
 #include <FEXCore/IR/IRDefines.inc>
       default: *out << "<Unknown Args>"; break;
       }
-
-      //*out << " (" <<  std::dec << CodeNode->GetUses() << ")";
 
       *out << "\n";
     }

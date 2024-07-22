@@ -9,7 +9,6 @@ $end_info$
 #include "Interface/IR/IR.h"
 #include "Interface/IR/IREmitter.h"
 #include "Interface/IR/PassManager.h"
-#include "Interface/IR/RegisterAllocationData.h"
 #include "Interface/IR/Passes/IRValidation.h"
 #include "Interface/IR/Passes/RegisterAllocationPass.h"
 
@@ -57,11 +56,6 @@ void IRValidation::Run(IREmitter* IREmit) {
   auto HeaderOp = CurrentIR.GetHeader();
   LOGMAN_THROW_A_FMT(HeaderOp->Header.Op == OP_IRHEADER, "First op wasn't IRHeader");
 #endif
-
-  IR::RegisterAllocationData* RAData {};
-  if (Manager->HasPass("RA")) {
-    RAData = Manager->GetPass<IR::RegisterAllocationPass>("RA")->GetAllocationData();
-  }
 
   for (auto [BlockNode, BlockHeader] : CurrentIR.GetBlocks()) {
     auto BlockIROp = BlockHeader->CW<FEXCore::IR::IROp_CodeBlock>();
@@ -125,7 +119,7 @@ void IRValidation::Run(IREmitter* IREmit) {
       uint8_t NumArgs = IR::GetRAArgs(IROp->Op);
 
       for (uint32_t i = 0; i < NumArgs; ++i) {
-        OrderedNodeWrapper Arg = IROp->Args[i];
+        Ref Arg = IROp->Args[i];
         const auto ArgID = Arg.ID();
         IROps Op = CurrentIR.GetOp<IROp_Header>(Arg)->Op;
 

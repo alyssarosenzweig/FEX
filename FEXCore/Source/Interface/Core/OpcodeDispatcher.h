@@ -72,9 +72,9 @@ struct LoadSourceOptions {
 };
 
 struct AddressMode {
-  Ref Segment {nullptr};
-  Ref Base {nullptr};
-  Ref Index {nullptr};
+  Ref Segment = InvalidRef;
+  Ref Base = InvalidRef;
+  Ref Index = InvalidRef;
   MemOffsetType IndexType = MEM_OFFSET_SXTX;
   uint8_t IndexScale = 1;
   int64_t Offset = 0;
@@ -115,7 +115,7 @@ public:
   void StartNewBlock() {
     // If we loaded flags but didn't change them, invalidate the cached copy and move on.
     // Changes get stored out by CalculateDeferredFlags.
-    CachedNZCV = nullptr;
+    CachedNZCV = InvalidRef;
     PossiblySetNZCVBits = ~0U;
     FlushRegisterCache();
 
@@ -126,44 +126,45 @@ public:
     ClearCachedNamedConstants();
   }
 
-  IRPair<IROp_Jump> Jump() {
+  IROp_Jump* Jump() {
     FlushRegisterCache();
     return _Jump();
   }
-  IRPair<IROp_Jump> Jump(Ref _TargetBlock) {
+  IROp_Jump* Jump(Ref _TargetBlock) {
     FlushRegisterCache();
     return _Jump(_TargetBlock);
   }
-  IRPair<IROp_CondJump>
-  CondJump(Ref _Cmp1, Ref _Cmp2, Ref _TrueBlock, Ref _FalseBlock, CondClassType _Cond = {COND_NEQ}, uint8_t _CompareSize = 0) {
+  IROp_CondJump* CondJump(Ref _Cmp1, Ref _Cmp2, Ref _TrueBlock, Ref _FalseBlock, CondClassType _Cond = {COND_NEQ}, uint8_t _CompareSize = 0) {
     FlushRegisterCache();
     return _CondJump(_Cmp1, _Cmp2, _TrueBlock, _FalseBlock, _Cond, _CompareSize);
   }
-  IRPair<IROp_CondJump> CondJump(Ref ssa0, CondClassType cond = {COND_NEQ}) {
+  IROp_CondJump* CondJump(Ref ssa0, CondClassType cond = {COND_NEQ}) {
     FlushRegisterCache();
     return _CondJump(ssa0, cond);
   }
-  IRPair<IROp_CondJump> CondJump(Ref ssa0, Ref ssa1, Ref ssa2, CondClassType cond = {COND_NEQ}) {
+  IROp_CondJump* CondJump(Ref ssa0, Ref ssa1, Ref ssa2, CondClassType cond = {COND_NEQ}) {
     FlushRegisterCache();
     return _CondJump(ssa0, ssa1, ssa2, cond);
   }
-  IRPair<IROp_CondJump> CondJumpNZCV(CondClassType Cond) {
+  IROp_CondJump* CondJumpNZCV(CondClassType Cond) {
     FlushRegisterCache();
 
     // The jump will ignore the sources, so it doesn't matter what we put here.
     // Put an inline constant so RA+codegen will ignore altogether.
-    auto Placeholder = _InlineConstant(0);
-    return _CondJump(Placeholder, Placeholder, InvalidNode, InvalidNode, Cond, 0, true);
+    // auto Placeholder = _InlineConstant(0);
+    // TODO
+    auto Placeholder = _Constant(0);
+    return _CondJump(Placeholder, Placeholder, InvalidRef, InvalidRef, Cond, 0, true);
   }
-  IRPair<IROp_ExitFunction> ExitFunction(Ref NewRIP) {
+  IROp_ExitFunction* ExitFunction(Ref NewRIP) {
     FlushRegisterCache();
     return _ExitFunction(NewRIP);
   }
-  IRPair<IROp_Break> Break(BreakDefinition Reason) {
+  IROp_Break* Break(BreakDefinition Reason) {
     FlushRegisterCache();
     return _Break(Reason);
   }
-  IRPair<IROp_Thunk> Thunk(Ref ArgPtr, SHA256Sum ThunkNameHash) {
+  IROp_Thunk* Thunk(Ref ArgPtr, SHA256Sum ThunkNameHash) {
     FlushRegisterCache();
     return _Thunk(ArgPtr, ThunkNameHash);
   }
@@ -732,7 +733,7 @@ public:
   void VZEROOp(OpcodeArgs);
 
   // X87 Ops
-  Ref ReconstructFSW_Helper(Ref T = nullptr);
+  Ref ReconstructFSW_Helper(Ref T = InvalidRef);
   // Returns new x87 stack top from FSW.
   Ref ReconstructX87StateFromFSW_Helper(Ref FSW);
   void FLD(OpcodeArgs, size_t Width);
@@ -1310,7 +1311,7 @@ protected:
     // Invariant: When executing instructions that clobber NZCV, the flags must
     // be resident in a GPR, which is equivalent to CachedNZCV != nullptr. Get
     // the NZCV which fills the cache if necessary.
-    if (CachedNZCV == nullptr) {
+    if (!CachedNZCV.Valid()) {
       GetNZCV();
     }
 
@@ -1603,7 +1604,7 @@ private:
   // (this is conservative).
   void HandleNZCVWrite(uint32_t _PossiblySetNZCVBits = ~0) {
     InvalidateDeferredFlags();
-    CachedNZCV = nullptr;
+    CachedNZCV = InvalidRef;
     PossiblySetNZCVBits = _PossiblySetNZCVBits;
     NZCVDirty = false;
   }
@@ -1612,7 +1613,7 @@ private:
   void HandleNZCV_RMW(uint32_t _PossiblySetNZCVBits = ~0) {
     CalculateDeferredFlags();
 
-    if (NZCVDirty && CachedNZCV) {
+    if (NZCVDirty && CachedNZCV.Valid()) {
       _StoreNZCV(CachedNZCV);
     }
 
@@ -1625,7 +1626,7 @@ private:
   }
 
   Ref GetNZCV() {
-    if (!CachedNZCV) {
+    if (!CachedNZCV.Valid()) {
       CachedNZCV = _LoadNZCV();
     }
 
@@ -1661,17 +1662,17 @@ private:
 
     if (CTX->HostFeatures.SupportsFlagM && PreferRmif) {
       // Update NZCV
-      if (NZCVDirty && CachedNZCV) {
+      if (NZCVDirty && CachedNZCV.Valid()) {
         _StoreNZCV(CachedNZCV);
       }
 
-      CachedNZCV = nullptr;
+      CachedNZCV = InvalidRef;
       NZCVDirty = false;
 
       // Insert as NZCV.
       signed RmifBit = Bit - 28;
       _RmifNZCV(Value, (64 + FlagOffset - RmifBit) % 64, 1u << RmifBit);
-      CachedNZCV = nullptr;
+      CachedNZCV = InvalidRef;
     } else {
       // Insert as GPR
       if (FlagOffset || MustMask) {
@@ -1696,7 +1697,7 @@ private:
     if (CTX->HostFeatures.SupportsFlagM && !NZCVDirty) {
       // Invert as NZCV.
       _CarryInvert();
-      CachedNZCV = nullptr;
+      CachedNZCV = InvalidRef;
     } else {
       // Invert as a GPR
       SetNZCV(_Xor(OpSize::i32Bit, GetNZCV(), _Constant(1u << Bit)));
@@ -1885,7 +1886,7 @@ private:
 
   void StoreContext(uint8_t Index, Ref Value) {
     LOGMAN_THROW_AA_FMT(Index < 64, "valid index");
-    LOGMAN_THROW_AA_FMT(Value != InvalidNode, "storing valid");
+    LOGMAN_THROW_AA_FMT(Value.Valid(), "storing valid");
 
     uint64_t Bit = (1ull << (uint64_t)Index);
 
@@ -2090,7 +2091,7 @@ private:
   // Load and cache a named vector constant.
   Ref LoadAndCacheNamedVectorConstant(uint8_t Size, FEXCore::IR::NamedVectorConstant NamedConstant) {
     auto log2_size_bytes = FEXCore::ilog2(Size);
-    if (CachedNamedVectorConstants[NamedConstant][log2_size_bytes]) {
+    if (CachedNamedVectorConstants[NamedConstant][log2_size_bytes].Valid()) {
       return CachedNamedVectorConstants[NamedConstant][log2_size_bytes];
     }
 

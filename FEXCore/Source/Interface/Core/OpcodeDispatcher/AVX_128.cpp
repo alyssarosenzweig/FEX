@@ -493,7 +493,7 @@ OpDispatchBuilder::RefPair OpDispatchBuilder::AVX128_LoadSource_WithOpSize(
     const auto gprIndex = gpr - X86State::REG_XMM_0;
     return {
       .Low = AVX128_LoadXMMRegister(gprIndex, false),
-      .High = NeedsHigh ? AVX128_LoadXMMRegister(gprIndex, true) : nullptr,
+      .High = NeedsHigh ? AVX128_LoadXMMRegister(gprIndex, true) : InvalidRef,
     };
   } else {
     LOGMAN_THROW_A_FMT(IsOperandMem(Operand, true), "only memory sources");
@@ -510,7 +510,7 @@ OpDispatchBuilder::RefPair OpDispatchBuilder::AVX128_LoadSource_WithOpSize(
 
     return {
       .Low = _LoadMemAutoTSO(FPRClass, 16, A, 1),
-      .High = NeedsHigh ? _LoadMemAutoTSO(FPRClass, 16, HighA, 1) : nullptr,
+      .High = NeedsHigh ? _LoadMemAutoTSO(FPRClass, 16, HighA, 1) : InvalidRef,
     };
   }
 }
@@ -534,7 +534,7 @@ OpDispatchBuilder::AVX128_LoadVSIB(const X86Tables::DecodedOp& Op, const X86Tabl
   return {
     .Low = AVX128_LoadXMMRegister(Index_XMM_gpr, false),
     .High = NeedsHigh ? AVX128_LoadXMMRegister(Index_XMM_gpr, true) : Invalid(),
-    .BaseAddr = Base_gpr != FEXCore::X86State::REG_INVALID ? LoadGPRRegister(Base_gpr, OpSize::i64Bit, 0, false) : nullptr,
+    .BaseAddr = Base_gpr != FEXCore::X86State::REG_INVALID ? LoadGPRRegister(Base_gpr, OpSize::i64Bit, 0, false) : InvalidRef,
     .Displacement = Operand.Data.SIB.Offset,
     .Scale = Operand.Data.SIB.Scale,
   };
@@ -547,11 +547,11 @@ void OpDispatchBuilder::AVX128_StoreResult_WithOpSize(FEXCore::X86Tables::Decode
     LOGMAN_THROW_AA_FMT(gpr >= FEXCore::X86State::REG_XMM_0 && gpr <= FEXCore::X86State::REG_XMM_15, "expected AVX register");
     const auto gprIndex = gpr - X86State::REG_XMM_0;
 
-    if (Src.Low) {
+    if (Src.Low.Valid()) {
       AVX128_StoreXMMRegister(gprIndex, Src.Low, false);
     }
 
-    if (Src.High) {
+    if (Src.High.Valid()) {
       AVX128_StoreXMMRegister(gprIndex, Src.High, true);
     }
   } else {
@@ -559,7 +559,7 @@ void OpDispatchBuilder::AVX128_StoreResult_WithOpSize(FEXCore::X86Tables::Decode
 
     _StoreMemAutoTSO(FPRClass, 16, A, Src.Low, 1);
 
-    if (Src.High) {
+    if (Src.High.Valid()) {
       AddressMode HighA = A;
       HighA.Offset += 16;
 
@@ -2544,11 +2544,11 @@ OpDispatchBuilder::RefPair OpDispatchBuilder::AVX128_VPGatherImpl(OpSize Size, O
 
   ///< BaseAddr doesn't need to exist, calculate that here.
   Ref BaseAddr = VSIB.BaseAddr;
-  if (BaseAddr && VSIB.Displacement) {
+  if (BaseAddr.Valid() && VSIB.Displacement) {
     BaseAddr = _Add(OpSize::i64Bit, BaseAddr, _Constant(VSIB.Displacement));
   } else if (VSIB.Displacement) {
     BaseAddr = _Constant(VSIB.Displacement);
-  } else if (!BaseAddr) {
+  } else if (!BaseAddr.Valid()) {
     BaseAddr = Invalid();
   }
 
@@ -2557,7 +2557,7 @@ OpDispatchBuilder::RefPair OpDispatchBuilder::AVX128_VPGatherImpl(OpSize Size, O
       // In the case that FEX is loading double the amount of data than the number of address bits then we can optimize this case.
       // For 256-bits of data we need to sign extend all four 32-bit address elements to be 64-bit.
       // For 128-bits of data we only need to sign extend the lower two 32-bit address elements.
-      LOGMAN_THROW_A_FMT(VSIB.High == Invalid(), "Need to not have a high VSIB source");
+      LOGMAN_THROW_A_FMT(!VSIB.High.Valid(), "Need to not have a high VSIB source");
 
       if (!Is128Bit) {
         VSIB.High = _VSSHLL2(OpSize::i128Bit, OpSize::i32Bit, VSIB.Low, FEXCore::ilog2(VSIB.Scale));
@@ -2639,22 +2639,20 @@ OpDispatchBuilder::RefPair OpDispatchBuilder::AVX128_VPGatherQPSImpl(Ref Dest, R
 
   ///< BaseAddr doesn't need to exist, calculate that here.
   Ref BaseAddr = VSIB.BaseAddr;
-  if (BaseAddr && VSIB.Displacement) {
+  if (BaseAddr.Valid() && VSIB.Displacement) {
     BaseAddr = _Add(OpSize::i64Bit, BaseAddr, _Constant(VSIB.Displacement));
   } else if (VSIB.Displacement) {
     BaseAddr = _Constant(VSIB.Displacement);
-  } else if (!BaseAddr) {
-    BaseAddr = Invalid();
   }
 
-  bool NeedsSVEScale = (VSIB.Scale == 2 || VSIB.Scale == 8) || (BaseAddr == Invalid() && VSIB.Scale != 1);
+  bool NeedsSVEScale = (VSIB.Scale == 2 || VSIB.Scale == 8) || (!BaseAddr.Valid() && VSIB.Scale != 1);
 
   if (CTX->HostFeatures.SupportsSVE128 && NeedsSVEScale) {
     // SVE gather instructions don't support scaling their vector elements by anything other than 1 or the address element size.
     // Pre-scale 64-bit addresses in the case that scale doesn't match in-order to hit SVE code paths more frequently.
     // Only hit this path if the host supports SVE. Otherwise it's a degradation for the ASIMD codepath.
     VSIB.Low = _VShlI(OpSize::i128Bit, OpSize::i64Bit, VSIB.Low, FEXCore::ilog2(VSIB.Scale));
-    if (VSIB.High != Invalid()) {
+    if (VSIB.High.Valid()) {
       VSIB.High = _VShlI(OpSize::i128Bit, OpSize::i64Bit, VSIB.High, FEXCore::ilog2(VSIB.Scale));
     }
     ///< Set the scale to one now that it has been prescaled.
@@ -2666,7 +2664,7 @@ OpDispatchBuilder::RefPair OpDispatchBuilder::AVX128_VPGatherQPSImpl(Ref Dest, R
   ///< Calculate the low-half.
   Result.Low = _VLoadVectorGatherMaskedQPS(OpSize::i128Bit, OpSize::i32Bit, Dest, Mask, BaseAddr, VSIB.Low, VSIB.High, VSIB.Scale);
   Result.High = LoadZeroVector(OpSize::i128Bit);
-  if (VSIB.High == Invalid()) {
+  if (!VSIB.High.Valid()) {
     // Special case for only loading two floats.
     // The upper 64-bits of the lower lane also gets zero.
     Result.Low = _VZip(OpSize::i128Bit, OpSize::i64Bit, Result.Low, Result.High);
@@ -2694,7 +2692,7 @@ void OpDispatchBuilder::AVX128_VPGATHER(OpcodeArgs) {
   auto VSIB = AVX128_LoadVSIB(Op, Op->Src[0], Op->Flags, NeedsHighAddrBytes);
   auto Mask = AVX128_LoadSource_WithOpSize(Op, Op->Src[1], Op->Flags, !Is128Bit);
 
-  bool NeedsSVEScale = (VSIB.Scale == 2 || VSIB.Scale == 8) || (VSIB.BaseAddr == Invalid() && VSIB.Scale != 1);
+  bool NeedsSVEScale = (VSIB.Scale == 2 || VSIB.Scale == 8) || (!VSIB.BaseAddr.Valid() && VSIB.Scale != 1);
 
   const bool NeedsExplicitSVEPath =
     CTX->HostFeatures.SupportsSVE128 && AddrElementSize == OpSize::i32Bit && ElementLoadSize == OpSize::i32Bit && NeedsSVEScale;

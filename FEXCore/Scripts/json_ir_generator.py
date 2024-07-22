@@ -1,6 +1,7 @@
 #!/bin/python3
 import json
 import sys
+import textwrap
 from dataclasses import dataclass, field
 import textwrap
 
@@ -203,11 +204,16 @@ def parse_ops(ops):
                         OpArg.DefaultInitializer = DefaultInit[1][:-1]
 
                     # If SSA type then we can generate validation for this op
+                    # TODO: Move this to validation pass?
+                    """
                     if (OpArg.IsSSA and
                         (OpArg.Type == "GPR" or
                         OpArg.Type == "GPRPair" or
                         OpArg.Type == "FPR")):
                         OpDef.EmitValidation.append(f"GetOpRegClass({ArgName}) == InvalidClass || WalkFindRegClass({ArgName}) == {OpArg.Type}Class")
+                    """
+                    # XXX FIXME
+                    OpDef.EmitValidation = []
 
                     OpArg.Name = ArgName
                     OpArg.NameWithPrefix = NameWithPrefix
@@ -303,23 +309,63 @@ def print_ir_structs(defines):
         else:
             output_file.write("\n")
 
+    assert(len(IROps) < (1 << 10))
+
     # Emit the default struct first
-    output_file.write("// Default structs\n")
-    output_file.write("struct __attribute__((packed)) IROp_Header {\n")
-    output_file.write("\tvoid* Data[0];\n")
-    output_file.write("\tIROps Op;\n\n")
-    output_file.write("\tuint8_t Size;\n")
-    output_file.write("\tuint8_t ElementSize;\n")
+    output_file.write(textwrap.dedent("""\
+        // Default structs
+        struct __attribute__((packed)) IROp_Header {
+            void* Data[0];
+            IROps Op : 10;
 
-    output_file.write("\ttemplate<typename T>\n")
-    output_file.write("\tT const* C() const { return reinterpret_cast<T const*>(Data); }\n")
-    output_file.write("\ttemplate<typename T>\n")
-    output_file.write("\tT* CW() { return reinterpret_cast<T*>(Data); }\n")
+            /* An instruction has a fixed number of destinations.
+             *
+             * TODO: Might be better to bake into the Op enum.
+             */
+            uint8_t DestCount : 2;
 
-    output_file.write("\tOrderedNodeWrapper Args[0];\n")
+            /* An instruction consists of _Records * records of 4 bytes each.
+             * Storing this here enables efficient * forward iteration, skipping
+             * over uninteresting instructions.
+             *
+             * TODO: It might be better to bake into the Op enum, the tradeoffs
+             * aren't super clear to me yet.
+             */
+            uint8_t _Records : 4;
 
-    output_file.write("};\n\n");
-    output_file.write("static_assert(sizeof(IROp_Header) == sizeof(uint32_t), \"IROp_Header should be 32-bits in size\");\n\n");
+            /* We also redundantly store the _Records value of the previous
+             * instruction to facilitate efficient backwards iteration.
+             */
+            uint8_t _PrevRecords : 4;
+
+            uint8_t Size : 6;
+            uint8_t ElementSize : 6;
+
+            /* The first N refs are destinations, the rest are sources. */
+            Ref Refs[0];
+
+            /* Define some helpers to cast to instruction types */
+            template<typename T>
+            T const* C() const { return reinterpret_cast<T const*>(Data); }
+            template<typename T>
+            T* CW() { return reinterpret_cast<T*>(Data); }
+
+            Ref Dest(int i) { return Refs[i]; }
+            Ref Src(int i) { return Refs[DestCount + i]; }
+            void SetDest(int i, Ref V) { Refs[i] = V; }
+            void SetSrc(int i, Ref V) { Refs[DestCount + i] = V; }
+
+            /* Traverse the block in source order */
+            struct IROp_Header *Next() {
+                return (struct IROp_Header *)((uint32_t*)Data + _Records);
+            }
+
+            struct IROp_Header *Prev() {
+                return (struct IROp_Header *)((uint32_t*)Data - _PrevRecords);
+            }
+        };
+        static_assert(sizeof(IROp_Header) == sizeof(uint32_t), \"IROp_Header should be 32-bits in size\");
+    """))
 
     # Now the user defined types
     output_file.write("// User defined IR Op structs\n")
@@ -327,28 +373,30 @@ def print_ir_structs(defines):
         output_file.write("struct __attribute__((packed)) IROp_{} {{\n".format(op.Name))
         output_file.write("\tIROp_Header Header;\n")
 
-        # SSA arguments have a hard requirement to appear after the header
-        if op.SSAArgNum > 0:
-            output_file.write("\t// SSA arguments\n")
+        # Definitions appear after the header
+        if op.HasDest:
+            output_file.write("\tRef Dest;\n")
 
+        # Sources appear after definitions
+        if op.SSAArgNum > 0:
             # Walk the SSA arguments and place them in order of declaration
             for arg in op.Arguments:
                 if arg.IsSSA:
-                    output_file.write("\tOrderedNodeWrapper {};\n".format(arg.Name));
+                    assert(arg.Name != "Dest") # this would get confusing
+                    output_file.write("\tRef {};\n".format(arg.Name));
 
         # Non-SSA arguments are also placed in order of declaration, after SSA though
         if op.NonSSAArgNum > 0:
-            output_file.write("\t// Non-SSA arguments\n")
             for arg in op.Arguments:
                 if not arg.Temporary and not arg.IsSSA:
                     CType = IRTypesToCXX[arg.Type].CXXName
                     output_file.write("\t{} {};\n".format(CType, arg.Name));
 
-        output_file.write("\tstatic constexpr IROps OPCODE = OP_{};\n".format(op.Name.upper()))
+        output_file.write("\n\tstatic constexpr IROps OPCODE = OP_{};\n".format(op.Name.upper()))
 
 
         if op.SSAArgNum > 0:
-            output_file.write("\t// Get index of argument by name\n")
+            # Get index of argument by name
             SSAArg = 0
             for arg in op.Arguments:
                 if arg.IsSSA:
@@ -422,6 +470,9 @@ def print_ir_reg_classes():
 
     output_file.write("// Make sure our array maps directly to the IROps enum\n")
     output_file.write("static_assert(IRRegClasses[IROps::OP_LAST] == FEXCore::IR::InvalidClass);\n\n")
+
+    # This is hardcoded in PhysicalRegister
+    output_file.write("static_assert(FEXCore::IR::InvalidClass == 0x7);\n\n")
 
     output_file.write("FEXCore::IR::RegisterClassType GetRegClass(IROps Op) { return IRRegClasses[Op]; }\n\n")
 
@@ -546,9 +597,7 @@ def print_ir_arg_printer():
 
             SSAArgNum = 0
             FirstArg = True
-            for i in range(0, len(op.Arguments)):
-                arg = op.Arguments[i]
-
+            for i, arg in enumerate(op.Arguments):
                 # No point printing temporaries that we can't recover
                 if arg.Temporary:
                     continue
@@ -560,7 +609,7 @@ def print_ir_arg_printer():
 
                 if arg.IsSSA:
                     # SSA value
-                    output_file.write("\tPrintArg(out, IR, Op->Header.Args[{}], RAData);\n".format(SSAArgNum))
+                    output_file.write("\tPrintArg(out, IR, Op->Src({}));\n".format(SSAArgNum))
                     SSAArgNum = SSAArgNum + 1
                 else:
                     # User defined op that is stored
@@ -572,174 +621,107 @@ def print_ir_arg_printer():
     output_file.write("#undef IROP_ARGPRINTER_HELPER\n")
     output_file.write("#endif\n")
 
+def print_ir_allocation_signature(op, with_dest = False):
+    args = []
+    has_dest = with_dest and op.HasDest
+
+    if has_dest:
+        args.append("Ref Dest")
+
+    # Output SSA args first
+    for arg in op.Arguments:
+        if arg.Temporary:
+            CType = IRTypesToCXX[arg.Type].CXXName
+            args.append("{} {}".format(CType, arg.Name));
+        elif arg.IsSSA:
+            # SSA value
+            args.append("Ref {}".format(arg.Name))
+        else:
+            # User defined op that is stored
+            tmp = f"{IRTypesToCXX[arg.Type].CXXName} {arg.Name}"
+            if arg.DefaultInitializer != None:
+                tmp += f" = {arg.DefaultInitializer}"
+
+            args.append(tmp)
+
+    ret = f'IROp_{op.Name}*' if has_dest or not op.HasDest else 'Ref'
+    suffix = '_to' if has_dest else ''
+    output_file.write(f"\t{ret} _{op.Name}{suffix}({', '.join(args)}) {{\n")
+
 # Print out IR allocator helpers
 def print_ir_allocator_helpers():
     output_file.write("#ifdef IROP_ALLOCATE_HELPERS\n")
 
-    output_file.write("\ttemplate <class T>\n")
-    output_file.write("\tstruct Wrapper final {\n")
-    output_file.write("\t\tT *first;\n")
-    output_file.write("\t\tOrderedNode *Node; ///< Actual offset of this IR in ths list\n")
-    output_file.write("\n")
-    output_file.write("\t\toperator Wrapper<IROp_Header>() const { return Wrapper<IROp_Header> {reinterpret_cast<IROp_Header*>(first), Node}; }\n")
-    output_file.write("\t\toperator OrderedNode *() { return Node; }\n")
-    output_file.write("\t\toperator const OrderedNode *() const { return Node; }\n")
-    output_file.write("\t\toperator OpNodeWrapper () const { return Node->Header.Value; }\n")
-    output_file.write("\t};\n")
-
-    output_file.write("\ttemplate <class T>\n")
-    output_file.write("\tusing IRPair = Wrapper<T>;\n\n")
-
-    output_file.write("\tIRPair<IROp_Header> AllocateRawOp(size_t HeaderSize) {\n")
-    output_file.write("\t\tauto Op = reinterpret_cast<IROp_Header*>(DualListData.DataAllocate(HeaderSize));\n")
-    output_file.write("\t\tmemset(Op, 0, HeaderSize);\n")
-    output_file.write("\t\tOp->Op = IROps::OP_DUMMY;\n")
-    output_file.write("\t\treturn IRPair<IROp_Header>{Op, CreateNode(Op)};\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\ttemplate<class T, IROps T2>\n")
-    output_file.write("\tT *AllocateOrphanOp() {\n")
-    output_file.write("\t\tsize_t Size = FEXCore::IR::GetSize(T2);\n")
-    output_file.write("\t\tauto Op = reinterpret_cast<T*>(DualListData.DataAllocate(Size));\n")
-    output_file.write("\t\tmemset(Op, 0, Size);\n")
-    output_file.write("\t\tOp->Header.Op = T2;\n")
-    output_file.write("\t\treturn Op;\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\ttemplate<class T, IROps T2>\n")
-    output_file.write("\tIRPair<T> AllocateOp() {\n")
-    output_file.write("\t\tsize_t Size = FEXCore::IR::GetSize(T2);\n")
-    output_file.write("\t\tauto Op = reinterpret_cast<T*>(DualListData.DataAllocate(Size));\n")
-    output_file.write("\t\tmemset(Op, 0, Size);\n")
-    output_file.write("\t\tOp->Header.Op = T2;\n")
-    output_file.write("\t\treturn IRPair<T>{Op, CreateNode(&Op->Header)};\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\tuint8_t GetOpSize(const OrderedNode *Op) const {\n")
-    output_file.write("\t\tauto HeaderOp = Op->Header.Value.GetNode(DualListData.DataBegin());\n")
-    output_file.write("\t\treturn HeaderOp->Size;\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\tuint8_t GetOpElementSize(const OrderedNode *Op) const {\n")
-    output_file.write("\t\tauto HeaderOp = Op->Header.Value.GetNode(DualListData.DataBegin());\n")
-    output_file.write("\t\treturn HeaderOp->ElementSize;\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\tuint8_t GetOpElements(const OrderedNode *Op) const {\n")
-    output_file.write("\t\tauto HeaderOp = Op->Header.Value.GetNode(DualListData.DataBegin());\n")
-    output_file.write("\t\tLOGMAN_THROW_A_FMT(OpHasDest(Op), \"Op {} has no dest\\n\", GetName(HeaderOp->Op));\n")
-    output_file.write("\t\treturn HeaderOp->Size / HeaderOp->ElementSize;\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\tbool OpHasDest(const OrderedNode *Op) const {\n")
-    output_file.write("\t\tauto HeaderOp = Op->Header.Value.GetNode(DualListData.DataBegin());\n")
-    output_file.write("\t\treturn GetHasDest(HeaderOp->Op);\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\tIROps GetOpType(const OrderedNode *Op) const {\n")
-    output_file.write("\t\tauto HeaderOp = Op->Header.Value.GetNode(DualListData.DataBegin());\n")
-    output_file.write("\t\treturn HeaderOp->Op;\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\tFEXCore::IR::RegisterClassType GetOpRegClass(const OrderedNode *Op) const {\n")
-    output_file.write("\t\treturn GetRegClass(GetOpType(Op));\n")
-    output_file.write("\t}\n\n")
-
-    output_file.write("\tstd::string_view const& GetOpName(const OrderedNode *Op) const {\n")
-    output_file.write("\t\treturn IR::GetName(GetOpType(Op));\n")
-    output_file.write("\t}\n\n")
-
     # Generate helpers with operands
     for op in IROps:
-        if op.Name != "Last":
-            output_file.write("\tIRPair<IROp_{}> _{}(" .format(op.Name, op.Name))
+        if op.Name == "Last":
+            continue
 
-            # Output SSA args first
-            for i in range(0, len(op.Arguments)):
-                arg = op.Arguments[i]
-                LastArg = len(op.Arguments) - i - 1 == 0
+        print_ir_allocation_signature(op, with_dest = True)
 
-                if arg.Temporary:
-                    CType = IRTypesToCXX[arg.Type].CXXName
-                    output_file.write("{} {}".format(CType, arg.Name));
-                elif arg.IsSSA:
-                    # SSA value
-                    output_file.write("OrderedNode *{}".format(arg.Name))
-                else:
-                    # User defined op that is stored
-                    CType = IRTypesToCXX[arg.Type].CXXName
-                    output_file.write("{} {}".format(CType, arg.Name));
+        # Save NZCV if needed before clobbering NZCV
+        if op.ImplicitFlagClobber:
+            output_file.write(f"\t\tSaveNZCV(IROps::OP_{op.Name.upper()});\n")
 
-                if arg.DefaultInitializer != None:
-                    output_file.write(" = {}".format(arg.DefaultInitializer))
+        # We gather the "has x87?" flag as we go. This saves the user from
+        # having to keep track of whether they emitted any x87.
+        if op.LoweredX87:
+            output_file.write("\t\tRecordX87Use();\n")
 
-                if not LastArg:
-                    output_file.write(", ")
+        output_file.write(f"\t\tIROp_{op.Name}* _Op = AllocateOp<IROp_{op.Name}, IROps::OP_{op.Name.upper()}>();\n")
 
-            output_file.write(") {\n")
+        refs = [arg.Name for arg in op.Arguments if not arg.Temporary]
+        if op.HasDest:
+            refs.append("Dest")
 
-            # Save NZCV if needed before clobbering NZCV
-            if op.ImplicitFlagClobber:
-                output_file.write("\t\tSaveNZCV(IROps::OP_{});".format(op.Name.upper()))
+        for ref in refs:
+            output_file.write(f"\t\t_Op->{ref} = {ref};\n")
 
-            # We gather the "has x87?" flag as we go. This saves the user from
-            # having to keep track of whether they emitted any x87.
-            if op.LoweredX87:
-                output_file.write("\t\tRecordX87Use();\n")
+        if op.HasDest:
+            # We can only infer a size if we have arguments
+            if op.DestSize == None:
+                # We need to infer destination size
+                output_file.write("\t\tuint8_t InferSize = 0;\n")
+                if len(op.Arguments) != 0:
+                    for arg in op.Arguments:
+                        if arg.IsSSA:
+                            output_file.write("\t\tuint8_t Size{} = GetOpSize(_{});\n".format(arg.Name, arg.Name))
+                    for arg in op.Arguments:
+                        if arg.IsSSA:
+                            output_file.write("\t\tInferSize = std::max(InferSize, Size{});\n".format(arg.Name))
 
-            output_file.write("\t\tauto _Op = AllocateOp<IROp_{}, IROps::OP_{}>();\n".format(op.Name, op.Name.upper()))
+                output_file.write("\t\t_Op->Header.Size = InferSize;\n")
 
-            if op.SSAArgNum != 0:
-                output_file.write("\t\tauto ListDataBegin = DualListData.ListBegin();\n")
-                for arg in op.Arguments:
-                    if arg.IsSSA:
-                        output_file.write("\t\t_Op.first->{} = {}->Wrapped(ListDataBegin);\n".format(arg.Name, arg.Name))
+        # Some ops without a destination still need an operating size
+        # Effectively reusing the destination size value for operation size
+        if op.DestSize != None:
+            output_file.write("\t\t_Op->Header.Size = {};\n".format(op.DestSize))
 
-            if op.SSAArgNum != 0:
-                for arg in op.Arguments:
-                    if arg.IsSSA:
-                        output_file.write("\t\t{}->AddUse();\n".format(arg.Name))
+        if op.NumElements == None:
+            output_file.write("\t\t_Op->Header.ElementSize = _Op->Header.Size;\n")
+        else:
+            output_file.write(f"\t\t_Op->Header.ElementSize = _Op->Header.Size / ({op.NumElements});\n")
 
-            if len(op.Arguments) != 0:
-                for arg in op.Arguments:
-                    if not arg.Temporary and not arg.IsSSA:
-                        output_file.write("\t\t_Op.first->{} = {};\n".format(arg.Name, arg.Name))
+        # Insert validation here
+        if len(op.EmitValidation) > 0:
+            output_file.write("\t\t#if defined(ASSERTIONS_ENABLED) && ASSERTIONS_ENABLED\n")
 
-            if (op.HasDest):
-                # We can only infer a size if we have arguments
-                if op.DestSize == None:
-                    # We need to infer destination size
-                    output_file.write("\t\tuint8_t InferSize = 0;\n")
-                    if len(op.Arguments) != 0:
-                        for arg in op.Arguments:
-                            if arg.IsSSA:
-                                output_file.write("\t\tuint8_t Size{} = GetOpSize({});\n".format(arg.Name, arg.Name))
-                        for arg in op.Arguments:
-                            if arg.IsSSA:
-                                output_file.write("\t\tInferSize = std::max(InferSize, Size{});\n".format(arg.Name))
+            for Validation in op.EmitValidation:
+                Sanitized = Validation.replace("\"", "\\\"")
+                output_file.write("\tLOGMAN_THROW_A_FMT({}, \"{}\");\n".format(Validation, Sanitized))
+            output_file.write("\t\t#endif\n")
 
-                    output_file.write("\t\t_Op.first->Header.Size = InferSize;\n")
+        output_file.write("\t\treturn _Op;\n")
+        output_file.write("\t}\n\n")
 
-            # Some ops without a destination still need an operating size
-            # Effectively reusing the destination size value for operation size
-            if op.DestSize != None:
-                output_file.write("\t\t_Op.first->Header.Size = {};\n".format(op.DestSize))
+        # Now the automatic dest allocation version
+        if op.HasDest:
+            args = ['Dest'] + [arg.Name for arg in op.Arguments]
 
-            if op.NumElements == None:
-                output_file.write("\t\t_Op.first->Header.ElementSize = _Op.first->Header.Size / ({});\n".format(1))
-            else:
-                output_file.write("\t\t_Op.first->Header.ElementSize = _Op.first->Header.Size / ({});\n".format(op.NumElements))
-
-            # Insert validation here
-            if op.EmitValidation != None:
-                output_file.write("\t\t#if defined(ASSERTIONS_ENABLED) && ASSERTIONS_ENABLED\n")
-
-                for Validation in op.EmitValidation:
-                    Sanitized = Validation.replace("\"", "\\\"")
-                    output_file.write("\tLOGMAN_THROW_A_FMT({}, \"{}\");\n".format(Validation, Sanitized))
-                output_file.write("\t\t#endif\n")
-
-            output_file.write("\t\treturn _Op;\n")
+            print_ir_allocation_signature(op, with_dest = False)
+            output_file.write(f"\t\tRef Dest = AllocateTemp();\n")
+            output_file.write(f"\t\t_{op.Name}_to({', '.join(args)});\n")
+            output_file.write("\t\treturn Dest;\n")
             output_file.write("\t}\n\n")
 
     output_file.write("#undef IROP_ALLOCATE_HELPERS\n")

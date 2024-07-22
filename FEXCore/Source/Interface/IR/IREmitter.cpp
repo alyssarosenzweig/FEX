@@ -88,69 +88,9 @@ FEXCore::IR::RegisterClassType IREmitter::WalkFindRegClass(Ref Node) {
 }
 
 void IREmitter::ResetWorkingList() {
-  DualListData.Reset();
   CodeBlocks.clear();
   CurrentWriteCursor = nullptr;
-  // This is necessary since we do "null" pointer checks
-  InvalidNode = reinterpret_cast<Ref>(DualListData.ListAllocate(sizeof(OrderedNode)));
-  memset(InvalidNode, 0, sizeof(OrderedNode));
   CurrentCodeBlock = nullptr;
-}
-
-void IREmitter::ReplaceAllUsesWithRange(Ref Node, Ref NewNode, AllNodesIterator Begin, AllNodesIterator End) {
-  uintptr_t ListBegin = DualListData.ListBegin();
-  auto NodeId = Node->Wrapped(ListBegin).ID();
-
-  while (Begin != End) {
-    auto [RealNode, IROp] = Begin();
-
-    const uint8_t NumArgs = IR::GetArgs(IROp->Op);
-    for (uint8_t i = 0; i < NumArgs; ++i) {
-      if (IROp->Args[i].ID() == NodeId) {
-        Node->RemoveUse();
-        NewNode->AddUse();
-        IROp->Args[i].NodeOffset = NewNode->Wrapped(ListBegin).NodeOffset;
-
-        // We can stop searching once all uses of the node are gone.
-        if (Node->NumUses == 0) {
-          return;
-        }
-      }
-    }
-
-    ++Begin;
-  }
-}
-
-void IREmitter::ReplaceNodeArgument(Ref Node, uint8_t Arg, Ref NewArg) {
-  uintptr_t ListBegin = DualListData.ListBegin();
-  uintptr_t DataBegin = DualListData.DataBegin();
-
-  FEXCore::IR::IROp_Header* IROp = Node->Op(DataBegin);
-  OrderedNodeWrapper OldArgWrapper = IROp->Args[Arg];
-  Ref OldArg = OldArgWrapper.GetNode(ListBegin);
-  OldArg->RemoveUse();
-  NewArg->AddUse();
-  IROp->Args[Arg].NodeOffset = NewArg->Wrapped(ListBegin).NodeOffset;
-}
-
-void IREmitter::RemoveArgUses(Ref Node) {
-  uintptr_t ListBegin = DualListData.ListBegin();
-  uintptr_t DataBegin = DualListData.DataBegin();
-
-  FEXCore::IR::IROp_Header* IROp = Node->Op(DataBegin);
-
-  const uint8_t NumArgs = IR::GetArgs(IROp->Op);
-  for (uint8_t i = 0; i < NumArgs; ++i) {
-    auto ArgNode = IROp->Args[i].GetNode(ListBegin);
-    ArgNode->RemoveUse();
-  }
-}
-
-void IREmitter::Remove(Ref Node) {
-  RemoveArgUses(Node);
-
-  Node->Unlink(DualListData.ListBegin());
 }
 
 IREmitter::IRPair<IROp_CodeBlock> IREmitter::CreateNewCodeBlockAfter(Ref insertAfter) {
@@ -181,32 +121,7 @@ IREmitter::IRPair<IROp_CodeBlock> IREmitter::CreateNewCodeBlockAfter(Ref insertA
 
 void IREmitter::SetCurrentCodeBlock(Ref Node) {
   CurrentCodeBlock = Node;
-  LOGMAN_THROW_A_FMT(Node->Op(DualListData.DataBegin())->Op == OP_CODEBLOCK, "Node wasn't codeblock. It was '{}'",
-                     IR::GetName(Node->Op(DualListData.DataBegin())->Op));
   SetWriteCursor(Node->Op(DualListData.DataBegin())->CW<IROp_CodeBlock>()->Begin.GetNode(DualListData.ListBegin()));
-}
-
-void IREmitter::ReplaceWithConstant(Ref Node, uint64_t Value) {
-  auto Header = Node->Op(DualListData.DataBegin());
-
-  if (IRSizes[Header->Op] >= sizeof(IROp_Constant)) {
-    // Unlink any arguments the node currently has
-    RemoveArgUses(Node);
-
-    // Overwrite data with the new constant op
-    Header->Op = OP_CONSTANT;
-    auto Const = Header->CW<IROp_Constant>();
-    Const->Constant = Value;
-  } else {
-    // Fallback path for when the node to overwrite is too small
-    auto cursor = GetWriteCursor();
-    SetWriteCursor(Node);
-
-    auto NewNode = _Constant(Value);
-    ReplaceAllUsesWith(Node, NewNode);
-
-    SetWriteCursor(cursor);
-  }
 }
 
 } // namespace FEXCore::IR

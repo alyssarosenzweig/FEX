@@ -11,8 +11,6 @@ $end_info$
 #include "Interface/Core/CPUBackend.h"
 #include "Interface/Core/Dispatcher/Dispatcher.h"
 #include "Interface/IR/IR.h"
-#include "Interface/IR/IntrusiveIRList.h"
-#include "Interface/IR/RegisterAllocationData.h"
 
 #include <aarch64/assembler-aarch64.h>
 #include <aarch64/disasm-aarch64.h>

@@ -142,7 +142,7 @@ Ref OpDispatchBuilder::GetPackedRFLAG(uint32_t FlagsMask) {
 void OpDispatchBuilder::CalculateOF(uint8_t SrcSize, Ref Res, Ref Src1, Ref Src2, bool Sub) {
   auto OpSize = SrcSize == 8 ? OpSize::i64Bit : OpSize::i32Bit;
   uint64_t SignBit = (SrcSize * 8) - 1;
-  Ref Anded = nullptr;
+  Ref Anded = InvalidRef;
 
   // For add, OF is set iff the sources have the same sign but the destination
   // sign differs. If we know a source sign, we can simplify the expression: if
@@ -153,7 +153,7 @@ void OpDispatchBuilder::CalculateOF(uint8_t SrcSize, Ref Res, Ref Src1, Ref Src2
   // sign matches the second source. If source 2 is known positive, set iff
   // source 1 negative and source 2 positive.
   uint64_t Const;
-  if (IsValueConstant(WrapNode(Src2), &Const)) {
+  if (false /* TODO! */ /*IsValueConstant(WrapNode(Src2), &Const)*/) {
     bool Negative = (Const & (1ull << SignBit)) != 0;
 
     if (Negative ^ Sub) {
@@ -241,7 +241,7 @@ void OpDispatchBuilder::CalculateAF(Ref Src1, Ref Src2) {
   // there's no sense XOR'ing at all. If we'll XOR with 1, that's just
   // inverting.
   uint64_t Const;
-  if (IsValueConstant(WrapNode(Src2), &Const)) {
+  if (false /* IsValueConstant(WrapNode(Src2), &Const) */ /* TODO! */) {
     if (Const & (1u << 4)) {
       SetRFLAG<FEXCore::X86State::RFLAG_AF_RAW_LOC>(_Not(OpSize::i32Bit, Src1));
     } else {
@@ -259,11 +259,11 @@ void OpDispatchBuilder::CalculateAF(Ref Src1, Ref Src2) {
 }
 
 void OpDispatchBuilder::CalculateDeferredFlags() {
-  if (NZCVDirty && CachedNZCV) {
+  if (NZCVDirty && CachedNZCV.Valid()) {
     _StoreNZCV(CachedNZCV);
   }
 
-  CachedNZCV = nullptr;
+  CachedNZCV = InvalidRef;
   NZCVDirty = false;
 }
 
@@ -342,7 +342,7 @@ Ref OpDispatchBuilder::CalculateFlags_SBB(uint8_t SrcSize, Ref Src1, Ref Src2) {
 
 Ref OpDispatchBuilder::CalculateFlags_SUB(uint8_t SrcSize, Ref Src1, Ref Src2, bool UpdateCF) {
   // Stash CF before stomping over it
-  auto OldCF = UpdateCF ? nullptr : GetRFLAG(FEXCore::X86State::RFLAG_CF_RAW_LOC);
+  Ref OldCF = UpdateCF ? InvalidRef : GetRFLAG(FEXCore::X86State::RFLAG_CF_RAW_LOC);
 
   HandleNZCVWrite();
 
@@ -371,7 +371,7 @@ Ref OpDispatchBuilder::CalculateFlags_SUB(uint8_t SrcSize, Ref Src1, Ref Src2, b
 
 Ref OpDispatchBuilder::CalculateFlags_ADD(uint8_t SrcSize, Ref Src1, Ref Src2, bool UpdateCF) {
   // Stash CF before stomping over it
-  auto OldCF = UpdateCF ? nullptr : GetRFLAG(FEXCore::X86State::RFLAG_CF_RAW_LOC);
+  Ref OldCF = UpdateCF ? InvalidRef : GetRFLAG(FEXCore::X86State::RFLAG_CF_RAW_LOC);
 
   HandleNZCVWrite();
 
@@ -415,7 +415,7 @@ void OpDispatchBuilder::CalculateFlags_UMUL(Ref High) {
   InvalidatePF_AF();
 
   auto Zero = _Constant(0);
-  OpSize Size = IR::SizeToOpSize(GetOpSize(High));
+  OpSize Size = IR::SizeToOpSize(High.Size());
 
   // CF and OF are set if the result of the operation can't be fit in to the destination register
   // The result register will be all zero if it can't fit due to how multiplication behaves
@@ -549,7 +549,7 @@ void OpDispatchBuilder::CalculateFlags_ShiftRightDoubleImmediate(uint8_t SrcSize
 void OpDispatchBuilder::CalculateFlags_BEXTR(Ref Src) {
   // ZF is set properly. CF and OF are defined as being set to zero. SF, PF, and
   // AF are undefined.
-  SetNZ_ZeroCV(GetOpSize(Src), Src);
+  SetNZ_ZeroCV(Src.Size(), Src);
   InvalidatePF_AF();
 }
 
