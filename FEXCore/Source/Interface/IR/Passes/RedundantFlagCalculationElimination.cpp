@@ -32,26 +32,38 @@ $end_info$
 
 namespace FEXCore::IR {
 
+using Flags = uint8_t;
+
 struct FlagInfo {
-  // If set, all following fields are zero, used for a quick exit.
-  bool Trivial;
+  union {
+    uint64_t _Raw;
 
-  // Set of flags read by the instruction.
-  unsigned Read;
+    struct {
+      // If set, the opcode can be replaced with Replacement if its flag writes can
+      // all be eliminated, or ReplacementNoWrite if its register write can be
+      // eliminated.
+      IROps Replacement;
+      IROps ReplacementNoWrite;
 
-  // Set of flags written by the instruction. Happens AFTER the reads.
-  unsigned Write;
+      // Set of flags read by the instruction.
+      Flags Read;
 
-  // If true, the instruction can be be eliminated if its flag writes can all be
-  // eliminated.
-  bool CanEliminate;
+      // Set of flags written by the instruction. Happens AFTER the reads.
+      Flags Write;
 
-  // If set, the opcode can be replaced with Replacement if its flag writes can
-  // all be eliminated, or ReplacementNoWrite if its register write can be
-  // eliminated.
-  IROps Replacement;
-  IROps ReplacementNoWrite;
+      // If true, the instruction can be be eliminated if its flag writes can all be
+      // eliminated.
+      bool CanEliminate;
+
+      uint8_t _Pad;
+    };
+  };
+
+  bool Nontrivial() {
+    return _Raw != 0;
+  }
 };
+static_assert(sizeof(struct FlagInfo) == 8, "handpacked");
 
 class DeadFlagCalculationEliminination final : public FEXCore::IR::Pass {
 public:
@@ -59,16 +71,16 @@ public:
 
 private:
   FlagInfo Classify(IROp_Header* Node);
-  unsigned FlagForReg(unsigned Reg);
-  unsigned FlagsForCondClassType(CondClassType Cond);
+  Flags FlagForReg(unsigned Reg);
+  Flags FlagsForCondClassType(CondClassType Cond);
   bool EliminateDeadCode(IREmitter* IREmit, Ref CodeNode, IROp_Header* IROp);
 };
 
-unsigned DeadFlagCalculationEliminination::FlagForReg(unsigned Reg) {
+Flags DeadFlagCalculationEliminination::FlagForReg(unsigned Reg) {
   return Reg == Core::CPUState::PF_AS_GREG ? FLAG_P : Reg == Core::CPUState::AF_AS_GREG ? FLAG_A : 0;
 };
 
-unsigned DeadFlagCalculationEliminination::FlagsForCondClassType(CondClassType Cond) {
+Flags DeadFlagCalculationEliminination::FlagsForCondClassType(CondClassType Cond) {
   switch (Cond) {
   case COND_AL: return 0;
 
@@ -267,7 +279,7 @@ FlagInfo DeadFlagCalculationEliminination::Classify(IROp_Header* IROp) {
 
   case OP_INVALIDATEFLAGS: {
     auto Op = IROp->CW<IR::IROp_InvalidateFlags>();
-    unsigned Flags = 0;
+    Flags Flags = 0;
 
     // TODO: Make this translation less silly
     if (Op->Flags & (1u << X86State::RFLAG_SF_RAW_LOC)) {
@@ -318,7 +330,7 @@ FlagInfo DeadFlagCalculationEliminination::Classify(IROp_Header* IROp) {
       break;
     }
 
-    unsigned Flag = FlagForReg(Op->Reg);
+    Flags Flag = FlagForReg(Op->Reg);
 
     return {
       .Write = Flag,
@@ -329,7 +341,7 @@ FlagInfo DeadFlagCalculationEliminination::Classify(IROp_Header* IROp) {
   default: break;
   }
 
-  return {.Trivial = true};
+  return {};
 }
 
 // General purpose dead code elimination. Returns whether flag handling should
@@ -416,7 +428,7 @@ void DeadFlagCalculationEliminination::Run(IREmitter* IREmit) {
         // the block backwards, that means we handle the write first.
         struct FlagInfo Info = Classify(IROp);
 
-        if (!Info.Trivial) {
+        if (Info.Nontrivial()) {
           bool Eliminated = false;
 
           if ((FlagsRead & Info.Write) == 0) {
