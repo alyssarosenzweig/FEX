@@ -151,10 +151,22 @@ void ConstProp::ConstantPropagation(IREmitter* IREmit, const IRListView& Current
     bool IsConstant1 = IREmit->IsValueConstant(IROp->Args[0], &Constant1);
     bool IsConstant2 = IREmit->IsValueConstant(IROp->Args[1], &Constant2);
 
+    // Track whether negating Constant2 will overflow for 8-bit/16-bit, this is
+    // the case for 2^7/2^15. In that case, swapping add/sub is invalid.
+    bool NegateOverflow2 = false;
+
     /* IsImmAddSub assumes the constants are sign-extended, take care of that
      * here so we get the optimization for 32-bit adds too.
      */
-    if (Op->Header.Size == 4) {
+    if (Op->Header.Size == 1) {
+      NegateOverflow2 = Constant2 == (1 << 7);
+      Constant1 = (int64_t)(int8_t)Constant1;
+      Constant2 = (int64_t)(int8_t)Constant2;
+    } else if (Op->Header.Size == 2) {
+      NegateOverflow2 = Constant2 == (1 << 15);
+      Constant1 = (int64_t)(int16_t)Constant1;
+      Constant2 = (int64_t)(int16_t)Constant2;
+    } else if (Op->Header.Size == 4) {
       Constant1 = (int64_t)(int32_t)Constant1;
       Constant2 = (int64_t)(int32_t)Constant2;
     }
@@ -165,7 +177,7 @@ void ConstProp::ConstantPropagation(IREmitter* IREmit, const IRListView& Current
     } else if (IsConstant1 && IsConstant2 && IROp->Op == OP_SUB) {
       uint64_t NewConstant = (Constant1 - Constant2) & getMask(IROp);
       IREmit->ReplaceWithConstant(CodeNode, NewConstant);
-    } else if (IsConstant2 && !ARMEmitter::IsImmAddSub(Constant2) && ARMEmitter::IsImmAddSub(-Constant2)) {
+    } else if (IsConstant2 && !ARMEmitter::IsImmAddSub(Constant2) && ARMEmitter::IsImmAddSub(-Constant2) && !NegateOverflow2) {
       // If the second argument is constant, the immediate is not ImmAddSub, but when negated is.
       // So, negate the operation to negate (and inline) the constant.
       if (IROp->Op == OP_ADD) {
@@ -608,9 +620,19 @@ void ConstProp::ConstantInlining(IREmitter* IREmit, const IRListView& CurrentIR)
     case OP_SUBWITHFLAGS: {
       uint64_t Constant2 {};
       if (IREmit->IsValueConstant(IROp->Args[1], &Constant2)) {
+        // 8/16-bit constants need to get sign-extended to 32-bit for inlining.
+        if (IROp->Size == 1) {
+          Constant2 = (int64_t)(int8_t)Constant2;
+        } else if (IROp->Size == 2) {
+          Constant2 = (int64_t)(int16_t)Constant2;
+        }
+
         // We don't allow 8/16-bit operations to have constants, since no
         // constant would be in bounds after the JIT's 24/16 shift.
-        if (ARMEmitter::IsImmAddSub(Constant2) && IROp->Size >= 4) {
+        //
+        // Some ops have special handling. TODO: Maybe generalize that trick.
+        if (ARMEmitter::IsImmAddSub(Constant2) &&
+            (IROp->Size >= 4 || IROp->Op == OP_SUBNZCV || IROp->Op == OP_SUBWITHFLAGS || IROp->Op == OP_ADDWITHFLAGS)) {
           IREmit->SetWriteCursor(CurrentIR.GetNode(IROp->Args[1]));
           IREmit->ReplaceNodeArgument(CodeNode, 1, CreateInlineConstant(IREmit, Constant2));
         }
