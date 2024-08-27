@@ -33,7 +33,6 @@ namespace FEXCore::CPU {
 DEF_BINOP_WITH_CONSTANT(Add, add, add)
 DEF_BINOP_WITH_CONSTANT(Sub, sub, sub)
 DEF_BINOP_WITH_CONSTANT(AddWithFlags, adds, adds)
-DEF_BINOP_WITH_CONSTANT(SubWithFlags, subs, subs)
 DEF_BINOP_WITH_CONSTANT(Or, orr, orr)
 DEF_BINOP_WITH_CONSTANT(And, and_, and_)
 DEF_BINOP_WITH_CONSTANT(Andn, bic, bic)
@@ -219,6 +218,38 @@ DEF_OP(SubShift) {
   auto Op = IROp->C<IR::IROp_SubShift>();
 
   sub(ConvertSize48(IROp), GetReg(Node), GetReg(Op->Src1.ID()), GetReg(Op->Src2.ID()), ConvertIRShiftType(Op->Shift), Op->ShiftAmount);
+}
+
+DEF_OP(SubWithFlags) {
+  auto Op = IROp->C<IR::IROp_SubWithFlags>();
+  const uint8_t OpSize = IROp->Size;
+  const auto Dst = GetReg(Node);
+  const auto EmitSize = ConvertSize(IROp);
+
+  ARMEmitter::Register Src1 = GetZeroableReg(Op->Src1);
+  if (OpSize < 4) {
+    if (Src1 == ARMEmitter::Reg::zr) {
+      mov(EmitSize, TMP1, 0);
+    } else if (OpSize == 1) {
+      sxtb(EmitSize, TMP1, Src1);
+    } else {
+      sxth(EmitSize, TMP1, Src1);
+    }
+
+    Src1 = TMP1;
+  }
+
+  uint64_t Const;
+  if (IsInlineConstant(Op->Src2, &Const)) {
+    subs(EmitSize, Dst, Src1, Const);
+  } else {
+    if (OpSize < 4) {
+      auto Extend = OpSize == 1 ? ARMEmitter::ExtendedType::SXTB : ARMEmitter::ExtendedType::SXTH;
+      subs(EmitSize, Dst, Src1, GetReg(Op->Src2.ID()), Extend);
+    } else {
+      subs(EmitSize, Dst, Src1, GetReg(Op->Src2.ID()));
+    }
+  }
 }
 
 DEF_OP(SubNZCV) {

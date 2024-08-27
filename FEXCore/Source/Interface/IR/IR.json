@@ -1232,10 +1232,7 @@
       "GPR = SubWithFlags OpSize:#Size, GPR:$Src1, GPR:$Src2": {
         "Desc": [ "Integer Sub. Truncates and sets NZCV per SubNZCV"],
         "DestSize": "Size",
-        "HasSideEffects": true,
-        "EmitValidation": [
-          "Size == FEXCore::IR::OpSize::i32Bit || Size == FEXCore::IR::OpSize::i64Bit"
-        ]
+        "HasSideEffects": true
       },
       "CmpPairZ OpSize:#Size, GPR:$Src1Lo, GPR:$Src1Hi, GPR:$Src2Lo, GPR:$Src2Hi": {
         "Desc": ["Compares register pairs and sets Z accordingly, preserving N/Z/V.",
