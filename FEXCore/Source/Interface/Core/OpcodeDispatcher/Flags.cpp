@@ -357,14 +357,7 @@ Ref OpDispatchBuilder::CalculateFlags_SUB(uint8_t SrcSize, Ref Src1, Ref Src2, b
 
   CalculateAF(Src1, Src2);
 
-  Ref Res;
-  if (SrcSize >= 4) {
-    Res = _SubWithFlags(IR::SizeToOpSize(SrcSize), Src1, Src2);
-  } else {
-    _SubNZCV(IR::SizeToOpSize(SrcSize), Src1, Src2);
-    Res = _Sub(OpSize::i32Bit, Src1, Src2);
-  }
-
+  Ref Res = _SubWithFlags(IR::SizeToOpSize(SrcSize), Src1, Src2);
   CalculatePF(Res);
 
   // If we're updating CF, we need it to be inverted because SubNZCV is inverted
