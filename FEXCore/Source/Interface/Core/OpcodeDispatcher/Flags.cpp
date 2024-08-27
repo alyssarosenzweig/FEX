@@ -380,14 +380,7 @@ Ref OpDispatchBuilder::CalculateFlags_ADD(uint8_t SrcSize, Ref Src1, Ref Src2, b
 
   CalculateAF(Src1, Src2);
 
-  Ref Res;
-  if (SrcSize >= 4) {
-    Res = _AddWithFlags(IR::SizeToOpSize(SrcSize), Src1, Src2);
-  } else {
-    _AddNZCV(IR::SizeToOpSize(SrcSize), Src1, Src2);
-    Res = _Add(OpSize::i32Bit, Src1, Src2);
-  }
-
+  Ref Res = _AddWithFlags(IR::SizeToOpSize(SrcSize), Src1, Src2);
   CalculatePF(Res);
 
   // We stomped over CF while calculation flags, restore it.
