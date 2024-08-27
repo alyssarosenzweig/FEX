@@ -5,6 +5,7 @@ tags: backend|arm64
 $end_info$
 */
 
+#include "CodeEmitter/Emitter.h"
 #include "FEXCore/IR/IR.h"
 #include "Interface/Context/Context.h"
 #include "Interface/Core/JIT/Arm64/JITClass.h"
@@ -225,25 +226,28 @@ DEF_OP(SubNZCV) {
   const uint8_t OpSize = IROp->Size;
   const auto EmitSize = ConvertSize(IROp);
 
-  uint64_t Const;
-  if (IsInlineConstant(Op->Src2, &Const)) {
-    LOGMAN_THROW_AA_FMT(OpSize >= 4, "Constant not allowed here");
-    cmp(EmitSize, GetReg(Op->Src1.ID()), Const);
-  } else {
-    unsigned Shift = OpSize < 4 ? (32 - (8 * OpSize)) : 0;
-    ARMEmitter::Register ShiftedSrc1 = GetZeroableReg(Op->Src1);
-
-    // Shift to fix flags for <32-bit ops.
-    // Any shift of zero is still zero so optimize out silly zero shifts.
-    if (OpSize < 4 && ShiftedSrc1 != ARMEmitter::Reg::zr) {
-      lsl(ARMEmitter::Size::i32Bit, TMP1, ShiftedSrc1, Shift);
-      ShiftedSrc1 = TMP1;
+  ARMEmitter::Register Src1 = GetZeroableReg(Op->Src1);
+  if (OpSize < 4) {
+    if (Src1 == ARMEmitter::Reg::zr) {
+      mov(EmitSize, TMP1, 0);
+    } else if (OpSize == 1) {
+      sxtb(EmitSize, TMP1, Src1);
+    } else {
+      sxth(EmitSize, TMP1, Src1);
     }
 
+    Src1 = TMP1;
+  }
+
+  uint64_t Const;
+  if (IsInlineConstant(Op->Src2, &Const)) {
+    cmp(EmitSize, Src1, Const);
+  } else {
     if (OpSize < 4) {
-      cmp(EmitSize, ShiftedSrc1, GetReg(Op->Src2.ID()), ARMEmitter::ShiftType::LSL, Shift);
+      auto Extend = OpSize == 1 ? ARMEmitter::ExtendedType::SXTB : ARMEmitter::ExtendedType::SXTH;
+      cmp(EmitSize, Src1, GetReg(Op->Src2.ID()), Extend);
     } else {
-      cmp(EmitSize, ShiftedSrc1, GetReg(Op->Src2.ID()));
+      cmp(EmitSize, Src1, GetReg(Op->Src2.ID()));
     }
   }
 }
