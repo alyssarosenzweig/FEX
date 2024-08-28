@@ -1875,8 +1875,8 @@
         "uxtb w21, w4",
         "uxtb x22, w4",
         "eor w27, w22, w21",
-        "lsl w0, w22, #24",
-        "cmp w0, w21, lsl #24",
+        "sxtb w0, w22",
+        "cmp w0, w21, sxtb",
         "sub w26, w22, w21",
         "bfxil x4, x20, #0, #8"
       ]
@@ -1891,8 +1891,8 @@
         "casalb w1, w20, [x4]",
         "mov w20, w1",
         "eor w27, w21, w20",
-        "lsl w0, w21, #24",
-        "cmp w0, w20, lsl #24",
+        "sxtb w0, w21",
+        "cmp w0, w20, sxtb",
         "sub w26, w21, w20",
         "bfxil x4, x20, #0, #8"
       ]
@@ -1905,8 +1905,8 @@
         "uxth w21, w4",
         "uxth x22, w4",
         "eor w27, w22, w21",
-        "lsl w0, w22, #16",
-        "cmp w0, w21, lsl #16",
+        "sxth w0, w22",
+        "cmp w0, w21, sxth",
         "sub w26, w22, w21",
         "bfxil x4, x20, #0, #16"
       ]
@@ -1921,8 +1921,8 @@
         "casalh w1, w20, [x4]",
         "mov w20, w1",
         "eor w27, w21, w20",
-        "lsl w0, w21, #16",
-        "cmp w0, w20, lsl #16",
+        "sxth w0, w21",
+        "cmp w0, w20, sxth",
         "sub w26, w21, w20",
         "bfxil x4, x20, #0, #16"
       ]
