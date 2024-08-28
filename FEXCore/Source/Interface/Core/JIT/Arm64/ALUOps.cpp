@@ -84,21 +84,32 @@ DEF_OP(AddShift) {
 
 DEF_OP(AddNZCV) {
   auto Op = IROp->C<IR::IROp_AddNZCV>();
-
+  const uint8_t OpSize = IROp->Size;
   const auto EmitSize = ConvertSize(IROp);
-  auto Src1 = GetReg(Op->Src1.ID());
+
+  ARMEmitter::Register Src1 = GetZeroableReg(Op->Src1);
+  if (OpSize < 4) {
+    if (Src1 == ARMEmitter::Reg::zr) {
+      mov(EmitSize, TMP1, 0);
+    } else if (OpSize == 1) {
+      sxtb(EmitSize, TMP1, Src1);
+    } else {
+      sxth(EmitSize, TMP1, Src1);
+    }
+
+    Src1 = TMP1;
+  }
 
   uint64_t Const;
   if (IsInlineConstant(Op->Src2, &Const)) {
-    LOGMAN_THROW_AA_FMT(IROp->Size >= 4, "Constant not allowed here");
     cmn(EmitSize, Src1, Const);
-  } else if (IROp->Size < 4) {
-    unsigned Shift = 32 - (8 * IROp->Size);
-
-    lsl(ARMEmitter::Size::i32Bit, TMP1, Src1, Shift);
-    cmn(EmitSize, TMP1, GetReg(Op->Src2.ID()), ARMEmitter::ShiftType::LSL, Shift);
   } else {
-    cmn(EmitSize, Src1, GetReg(Op->Src2.ID()));
+    if (OpSize < 4) {
+      auto Extend = OpSize == 1 ? ARMEmitter::ExtendedType::SXTB : ARMEmitter::ExtendedType::SXTH;
+      cmn(EmitSize, Src1, GetReg(Op->Src2.ID()), Extend);
+    } else {
+      cmn(EmitSize, Src1, GetReg(Op->Src2.ID()));
+    }
   }
 }
 
