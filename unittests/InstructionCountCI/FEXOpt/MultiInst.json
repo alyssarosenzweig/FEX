@@ -46,6 +46,57 @@
         "str x6, [x8, #-8]!"
       ]
     },
+    "x86 stack frame setup": {
+      "x86InstructionCount": 4,
+      "ExpectedInstructionCount": 4,
+      "Comment": [
+        "dougallj's example"
+      ],
+      "x86Insts": [
+        "push rbp",
+        "mov rbp, rsp",
+        "push rbx",
+        "push rax"
+      ],
+      "ExpectedArm64ASM": [
+        "str x9, [x8, #-8]!",
+        "mov x9, x8",
+        "str x6, [x8, #-8]!",
+        "str x4, [x8, #-8]!"
+      ]
+    },
+    "x86 stack frame teardown": {
+      "x86InstructionCount": 9,
+      "ExpectedInstructionCount": 12,
+      "Comment": [
+        "Billy's example"
+      ],
+      "x86Insts": [
+        "add  rsp,0x38",
+        "pop  rbx",
+        "pop  rbp",
+        "pop  rdi",
+        "pop  rsi",
+        "pop  r12",
+        "pop  r13",
+        "pop  r14",
+        "pop  r15"
+      ],
+      "ExpectedArm64ASM": [
+        "mvn w27, w8",
+        "adds x26, x8, #0x38 (56)",
+        "mov x8, x26",
+        "ldr x6, [x8], #8",
+        "ldr x9, [x8], #8",
+        "ldr x11, [x8], #8",
+        "ldr x10, [x8], #8",
+        "ldr x16, [x8], #8",
+        "ldr x17, [x8], #8",
+        "ldr x19, [x8], #8",
+        "ldr x29, [x8], #8",
+        "cfinv"
+      ]
+    },
     "adds xmm0, xmm1, xmm2": {
       "x86InstructionCount": 2,
       "ExpectedInstructionCount": 4,
