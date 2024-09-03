@@ -358,18 +358,13 @@ void OpDispatchBuilder::SALCOp(OpcodeArgs) {
 void OpDispatchBuilder::PUSHOp(OpcodeArgs) {
   const uint8_t Size = GetSrcSize(Op);
 
-  Ref Src = LoadSource(GPRClass, Op, Op->Src[0], Op->Flags);
-  Push(Size, Src);
-  FlushRegisterCache();
+  Push(Size, LoadSource(GPRClass, Op, Op->Src[0], Op->Flags));
 }
 
 void OpDispatchBuilder::PUSHREGOp(OpcodeArgs) {
   const uint8_t Size = GetSrcSize(Op);
 
-  Ref Src = LoadSource(GPRClass, Op, Op->Dest, Op->Flags, {.AllowUpperGarbage = true});
-
-  Push(Size, Src);
-  FlushRegisterCache();
+  Push(Size, LoadSource(GPRClass, Op, Op->Dest, Op->Flags, {.AllowUpperGarbage = true}));
 }
 
 void OpDispatchBuilder::PUSHAOp(OpcodeArgs) {
@@ -419,7 +414,6 @@ void OpDispatchBuilder::PUSHAOp(OpcodeArgs) {
 
   // Store the new stack pointer
   StoreGPRRegister(X86State::REG_RSP, NewSP, 4);
-  FlushRegisterCache();
 }
 
 template<uint32_t SegmentReg>
