@@ -66,21 +66,27 @@ struct ControlFlowGraph {
   fextl::unordered_map<uint32_t, BlockInfo> BlockMap;
   IRListView& IR;
 
-  BlockInfo& Get(uint32_t Block) {
-    return BlockMap.try_emplace(Block).first->second;
+  BlockInfo* Get(uint32_t Block) {
+    printf("%u in\n", BlockMap.contains(Block));
+    if (BlockMap.contains(Block)) {
+      printf("Go %u\n", BlockMap.try_emplace(Block).first->second.Predecessors.size());
+    }
+    return &BlockMap.try_emplace(Block).first->second;
   }
 
-  BlockInfo& Get(Ref Block) {
+  BlockInfo* Get(Ref Block) {
     return Get(IR.GetID(Block).Value);
   }
 
-  BlockInfo& Get(OrderedNodeWrapper Block) {
+  BlockInfo* Get(OrderedNodeWrapper Block) {
     return Get(Block.ID().Value);
   }
 
   void RecordEdge(Ref From, Ref To) {
+    printf("edge %u -> %u\n", IR.GetID(From).Value, IR.GetID(To).Value);
     auto Info = Get(To);
-    Info.Predecessors.emplace_back(From);
+    Info->Predecessors.push_back(From);
+    printf("%u\n", Info->Predecessors.size());
   }
 };
 
@@ -97,7 +103,7 @@ private:
   void FoldAXFLAG(IREmitter* IREmit, IRListView& CurrentIR, IROp_CondJump* Op, Ref CodeNode);
   CondClassType X86ToArmFloatCond(CondClassType X86);
   bool ProcessBlock(IREmitter* IREmit, IRListView& CurrentIR, Ref Block, ControlFlowGraph& CFG, bool& ReadsParity);
-  void OptimizeParity(IREmitter* IREmit, IRListView& CurrentIR);
+  void OptimizeParity(IREmitter* IREmit, IRListView& CurrentIR, ControlFlowGraph& CFG);
 };
 
 unsigned DeadFlagCalculationEliminination::FlagForReg(unsigned Reg) {
@@ -495,9 +501,9 @@ bool DeadFlagCalculationEliminination::ProcessBlock(IREmitter* IREmit, IRListVie
   auto [ExitNode, ExitOp] = CodeLast();
   if (ExitOp->Op == IR::OP_CONDJUMP) {
     auto Op = ExitOp->CW<IR::IROp_CondJump>();
-    FlagsRead = CFG.Get(Op->TrueBlock).Flags | CFG.Get(Op->FalseBlock).Flags;
+    FlagsRead = CFG.Get(Op->TrueBlock)->Flags | CFG.Get(Op->FalseBlock)->Flags;
   } else if (ExitOp->Op == IR::OP_JUMP) {
-    FlagsRead = CFG.Get(ExitOp->Args[0]).Flags;
+    FlagsRead = CFG.Get(ExitOp->Args[0])->Flags;
   }
 
   // Iterate the block in reverse
@@ -567,7 +573,7 @@ bool DeadFlagCalculationEliminination::ProcessBlock(IREmitter* IREmit, IRListVie
     --CodeLast;
   }
 
-  CFG.Get(Block).Flags = FlagsRead;
+  CFG.Get(Block)->Flags = FlagsRead;
   return Progress;
 }
 
@@ -579,14 +585,16 @@ void DeadFlagCalculationEliminination::OptimizeParity(IREmitter* IREmit, IRListV
   // Initialize conservatively: all blocks need full parity. This initialization
   // matters for proper handling of backedges.
   for (auto [Block, BlockHeader] : CurrentIR.GetBlocks()) {
-    CFG.Get(Block).Flags = FULL;
+    CFG.Get(Block)->Flags = FULL;
   }
 
   for (auto [Block, BlockHeader] : CurrentIR.GetBlocks()) {
-    // If any predecessor needs full parity, we need full parity.
+    // If any predecessor needs full parity at the end, we need full parity.
     bool Full = false;
-    for (auto Pred : CFG.Get(Block).Predecessors) {
-      Full |= (CFG.Get(Pred).Flags == FULL);
+    printf("%u preds %u\n", CurrentIR.GetID(Block).Value, CFG.Get(Block)->Predecessors.size());
+    for (auto Pred : CFG.Get(Block)->Predecessors) {
+      printf("pred had %u\n", (CFG.Get(Pred)->Flags == FULL));
+      Full |= (CFG.Get(Pred)->Flags == FULL);
     }
 
     for (auto [CodeNode, IROp] : CurrentIR.GetCode(Block)) {
@@ -624,6 +632,9 @@ void DeadFlagCalculationEliminination::OptimizeParity(IREmitter* IREmit, IRListV
         IREmit->Remove(CodeNode);
       }
     }
+
+    // Record our final state for our successors to read.
+    CFG.Get(Block)->Flags = Full ? FULL : PARTIAL;
   }
 }
 
@@ -644,14 +655,16 @@ void DeadFlagCalculationEliminination::Run(IREmitter* IREmit) {
     if (ExitOp->Op == IR::OP_CONDJUMP) {
       auto Op = ExitOp->CW<IR::IROp_CondJump>();
 
+      printf("record cond\n");
       CFG.RecordEdge(BlockNode, CurrentIR.GetNode(Op->TrueBlock));
       CFG.RecordEdge(BlockNode, CurrentIR.GetNode(Op->FalseBlock));
     } else if (ExitOp->Op == IR::OP_JUMP) {
+      printf("record jump\n");
       CFG.RecordEdge(BlockNode, CurrentIR.GetNode(ExitOp->Args[0]));
     }
 
     // Initialize the map conservatiely
-    CFG.Get(BlockNode).Flags = FLAG_ALL;
+    CFG.Get(BlockNode)->Flags = FLAG_ALL;
     Worklist.push_front(BlockNode);
   }
 
@@ -679,7 +692,7 @@ void DeadFlagCalculationEliminination::Run(IREmitter* IREmit) {
     auto [ExitNode, ExitOp] = CodeLast();
     if (ExitOp->Op == IR::OP_CONDJUMP) {
       auto Op = ExitOp->CW<IR::IROp_CondJump>();
-      uint32_t FlagsOut = CFG.Get(Op->TrueBlock).Flags | CFG.Get(Op->FalseBlock).Flags;
+      uint32_t FlagsOut = CFG.Get(Op->TrueBlock)->Flags | CFG.Get(Op->FalseBlock)->Flags;
 
       if ((FlagsOut & FLAG_NZCV) == 0) {
         FoldCompareBranch(IREmit, CurrentIR, Op, ExitNode);
@@ -689,7 +702,7 @@ void DeadFlagCalculationEliminination::Run(IREmitter* IREmit) {
   }
 
   if (ReadsParity) {
-    OptimizeParity(IREmit, CurrentIR);
+    OptimizeParity(IREmit, CurrentIR, CFG);
   }
 }
 
