@@ -56,6 +56,34 @@ struct FlagInfo {
   IROps ReplacementNoWrite;
 };
 
+
+struct BlockInfo {
+  fextl::vector<Ref> Predecessors;
+  uint8_t Flags;
+};
+
+struct ControlFlowGraph {
+  fextl::unordered_map<uint32_t, BlockInfo> BlockMap;
+  IRListView& IR;
+
+  BlockInfo& Get(uint32_t Block) {
+    return BlockMap.try_emplace(Block).first->second;
+  }
+
+  BlockInfo& Get(Ref Block) {
+    return Get(IR.GetID(Block).Value);
+  }
+
+  BlockInfo& Get(OrderedNodeWrapper Block) {
+    return Get(Block.ID().Value);
+  }
+
+  void RecordEdge(Ref From, Ref To) {
+    auto Info = Get(To);
+    Info.Predecessors.emplace_back(From);
+  }
+};
+
 class DeadFlagCalculationEliminination final : public FEXCore::IR::Pass {
 public:
   void Run(IREmitter* IREmit) override;
@@ -68,7 +96,7 @@ private:
   void FoldCompareBranch(IREmitter* IREmit, IRListView& CurrentIR, IROp_CondJump* Op, Ref CodeNode);
   void FoldAXFLAG(IREmitter* IREmit, IRListView& CurrentIR, IROp_CondJump* Op, Ref CodeNode);
   CondClassType X86ToArmFloatCond(CondClassType X86);
-  bool ProcessBlock(IREmitter* IREmit, IRListView& CurrentIR, Ref Block, fextl::vector<uint8_t>& FlagsIn, bool& ReadsParity);
+  bool ProcessBlock(IREmitter* IREmit, IRListView& CurrentIR, Ref Block, ControlFlowGraph& CFG, bool& ReadsParity);
   void OptimizeParity(IREmitter* IREmit, IRListView& CurrentIR);
 };
 
@@ -449,8 +477,7 @@ void DeadFlagCalculationEliminination::FoldAXFLAG(IREmitter* IREmit, IRListView&
 /**
  * @brief This pass removes dead code locally.
  */
-bool DeadFlagCalculationEliminination::ProcessBlock(IREmitter* IREmit, IRListView& CurrentIR, Ref Block, fextl::vector<uint8_t>& FlagsIn,
-                                                    bool& ReadsParity) {
+bool DeadFlagCalculationEliminination::ProcessBlock(IREmitter* IREmit, IRListView& CurrentIR, Ref Block, ControlFlowGraph& CFG, bool& ReadsParity) {
   bool Progress = false;
   uint32_t FlagsRead = FLAG_ALL;
 
@@ -468,9 +495,9 @@ bool DeadFlagCalculationEliminination::ProcessBlock(IREmitter* IREmit, IRListVie
   auto [ExitNode, ExitOp] = CodeLast();
   if (ExitOp->Op == IR::OP_CONDJUMP) {
     auto Op = ExitOp->CW<IR::IROp_CondJump>();
-    FlagsRead = FlagsIn[Op->TrueBlock.ID().Value] | FlagsIn[Op->FalseBlock.ID().Value];
+    FlagsRead = CFG.Get(Op->TrueBlock).Flags | CFG.Get(Op->FalseBlock).Flags;
   } else if (ExitOp->Op == IR::OP_JUMP) {
-    FlagsRead = FlagsIn[ExitOp->Args[0].ID().Value];
+    FlagsRead = CFG.Get(ExitOp->Args[0]).Flags;
   }
 
   // Iterate the block in reverse
@@ -540,7 +567,7 @@ bool DeadFlagCalculationEliminination::ProcessBlock(IREmitter* IREmit, IRListVie
     --CodeLast;
   }
 
-  FlagsIn[CurrentIR.GetID(Block).Value] = FlagsRead;
+  CFG.Get(Block).Flags = FlagsRead;
   return Progress;
 }
 
@@ -591,13 +618,27 @@ void DeadFlagCalculationEliminination::Run(IREmitter* IREmit) {
   FEXCORE_PROFILE_SCOPED("PassManager::DFE");
 
   auto CurrentIR = IREmit->ViewIR();
-  fextl::vector<uint8_t> FlagsIn(CurrentIR.GetSSACount());
   fextl::deque<Ref> Worklist;
   bool ReadsParity = false;
 
+  ControlFlowGraph CFG {.IR = CurrentIR};
+
   for (auto [BlockNode, BlockHeader] : CurrentIR.GetBlocks()) {
+    // Gather CFG
+    auto CodeLast = CurrentIR.at(BlockHeader->C<IROp_CodeBlock>()->Last);
+    --CodeLast;
+    auto [ExitNode, ExitOp] = CodeLast();
+    if (ExitOp->Op == IR::OP_CONDJUMP) {
+      auto Op = ExitOp->CW<IR::IROp_CondJump>();
+
+      CFG.RecordEdge(BlockNode, CurrentIR.GetNode(Op->TrueBlock));
+      CFG.RecordEdge(BlockNode, CurrentIR.GetNode(Op->FalseBlock));
+    } else if (ExitOp->Op == IR::OP_JUMP) {
+      CFG.RecordEdge(BlockNode, CurrentIR.GetNode(ExitOp->Args[0]));
+    }
+
     // Initialize the map conservatiely
-    FlagsIn[CurrentIR.GetID(BlockNode).Value] = FLAG_ALL;
+    CFG.Get(BlockNode).Flags = FLAG_ALL;
     Worklist.push_front(BlockNode);
   }
 
@@ -609,7 +650,7 @@ void DeadFlagCalculationEliminination::Run(IREmitter* IREmit) {
     Progress = false;
 
     for (auto Block : Worklist) {
-      Progress |= ProcessBlock(IREmit, CurrentIR, Block, FlagsIn, ReadsParity);
+      Progress |= ProcessBlock(IREmit, CurrentIR, Block, CFG, ReadsParity);
     }
   } while (Progress);
 
@@ -625,7 +666,7 @@ void DeadFlagCalculationEliminination::Run(IREmitter* IREmit) {
     auto [ExitNode, ExitOp] = CodeLast();
     if (ExitOp->Op == IR::OP_CONDJUMP) {
       auto Op = ExitOp->CW<IR::IROp_CondJump>();
-      uint32_t FlagsOut = FlagsIn[Op->TrueBlock.ID().Value] | FlagsIn[Op->FalseBlock.ID().Value];
+      uint32_t FlagsOut = CFG.Get(Op->TrueBlock).Flags | CFG.Get(Op->FalseBlock).Flags;
 
       if ((FlagsOut & FLAG_NZCV) == 0) {
         FoldCompareBranch(IREmit, CurrentIR, Op, ExitNode);
