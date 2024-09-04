@@ -40,6 +40,8 @@ void OpDispatchBuilder::SyscallOp(OpcodeArgs, bool IsSyscallInst) {
   constexpr size_t SyscallArgs = 7;
   using SyscallArray = std::array<uint64_t, SyscallArgs>;
 
+  RegisterBarrier();
+
   size_t NumArguments {};
   const SyscallArray* GPRIndexes {};
   static constexpr SyscallArray GPRIndexes_64 = {
@@ -97,12 +99,13 @@ void OpDispatchBuilder::SyscallOp(OpcodeArgs, bool IsSyscallInst) {
     StoreGPRRegister(X86State::REG_RCX, RIPAfterInst, 8);
   }
 
-  FlushRegisterCache();
   auto SyscallOp = _Syscall(Arguments[0], Arguments[1], Arguments[2], Arguments[3], Arguments[4], Arguments[5], Arguments[6], DefaultSyscallFlags);
 
   if ((DefaultSyscallFlags & FEXCore::IR::SyscallFlags::NORETURNEDRESULT) != FEXCore::IR::SyscallFlags::NORETURNEDRESULT) {
     StoreGPRRegister(X86State::REG_RAX, SyscallOp);
   }
+
+  RegisterBarrier();
 
   if (Op->TableInfo->Flags & X86Tables::InstFlags::FLAGS_BLOCK_END) {
     // RIP could have been updated after coming back from the Syscall.
@@ -740,7 +743,6 @@ void OpDispatchBuilder::CondJUMPOp(OpcodeArgs) {
     Target &= 0xFFFFFFFFU;
   }
 
-  FlushRegisterCache();
   auto TrueBlock = JumpTargets.find(Target);
   auto FalseBlock = JumpTargets.find(Op->PC + Op->InstSize);
 

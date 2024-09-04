@@ -128,6 +128,21 @@ public:
     ClearCachedNamedConstants();
   }
 
+  // The opcode dispatcher groups incoming instructions into clauses. Static
+  // registers are only correct at clause boundaries. This breaks the clause by
+  // starting a new block. As a consequence of no cross-block liveness, no
+  // values may be live across a RegisterBarrier.
+  //
+  // This is relatively heavy.
+  void RegisterBarrier() {
+    FlushRegisterCache();
+
+    Ref Block = CreateNewCodeBlockAfter(GetCurrentBlock());
+    Jump(Block);
+    SetCurrentCodeBlock(Block);
+    StartNewBlock();
+  }
+
   IRPair<IROp_Jump> Jump() {
     FlushRegisterCache();
     return _Jump();
@@ -1893,7 +1908,16 @@ private:
           RegCache.Partial |= Bit;
         }
       } else {
+        auto Saved = CurrentWriteCursor;
+        auto Begin = UnwrapNode(CurrentCodeBlock->Header.Value.GetNode(DualListData.DataBegin())->Args[0]);
+
+        bool Different = CurrentWriteCursor != Begin;
+        SetWriteCursor(Begin);
+
         RegCache.Value[Index] = _LoadRegister(Offset, RegClass, Size);
+        if (Different) {
+          CurrentWriteCursor = Saved;
+        }
       }
 
       RegCache.Cached |= Bit;

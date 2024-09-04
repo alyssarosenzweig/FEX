@@ -26,11 +26,9 @@ void PassManager::Finalize() {
 
   auto it = Passes.begin();
   // Walk the passes and add them where asked.
-  if (PassManagerDumpIR() & FEXCore::Config::PassManagerDumpIR::BEFOREOPT) {
     // Insert at the start.
     it = InsertAt(it, Debug::CreateIRDumper());
     ++it; // Skip what we inserted.
-  }
 
   if ((PassManagerDumpIR() & FEXCore::Config::PassManagerDumpIR::BEFOREPASS) ||
       (PassManagerDumpIR() & FEXCore::Config::PassManagerDumpIR::AFTERPASS)) {
