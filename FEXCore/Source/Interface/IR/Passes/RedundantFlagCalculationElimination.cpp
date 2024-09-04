@@ -571,11 +571,24 @@ bool DeadFlagCalculationEliminination::ProcessBlock(IREmitter* IREmit, IRListVie
   return Progress;
 }
 
-void DeadFlagCalculationEliminination::OptimizeParity(IREmitter* IREmit, IRListView& CurrentIR) {
-  // Pass to determine if 8-bit parity is required.
+void DeadFlagCalculationEliminination::OptimizeParity(IREmitter* IREmit, IRListView& CurrentIR, ControlFlowGraph& CFG) {
+  // Mapping for flags inside this pass.
+  const uint8_t PARTIAL = 0;
+  const uint8_t FULL = 1;
+
+  // Initialize conservatively: all blocks need full parity. This initialization
+  // matters for proper handling of backedges.
   for (auto [Block, BlockHeader] : CurrentIR.GetBlocks()) {
-    // TODO: This is local for now, but we should propagate this globally.
-    bool Full = true;
+    CFG.Get(Block).Flags = FULL;
+  }
+
+  for (auto [Block, BlockHeader] : CurrentIR.GetBlocks()) {
+    // If any predecessor needs full parity, we need full parity.
+    bool Full = false;
+    for (auto Pred : CFG.Get(Block).Predecessors) {
+      Full |= (CFG.Get(Pred).Flags == FULL);
+    }
+
     for (auto [CodeNode, IROp] : CurrentIR.GetCode(Block)) {
       if (IROp->Op == OP_STOREREGISTER) {
         auto Op = IROp->CW<IR::IROp_StoreRegister>();
