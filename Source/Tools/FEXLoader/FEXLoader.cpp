@@ -248,6 +248,8 @@ bool QueryInterpreterInstalled(bool ExecutedWithFD, const FEX::Config::PortableI
 
 namespace FEX::TSO {
 void SetupTSOEmulation(FEXCore::Context::Context* CTX) {
+  return;
+
   // We need to check if these are defined or not. This is a very fresh feature.
 #ifndef PR_GET_MEM_MODEL
 #define PR_GET_MEM_MODEL 0x6d4d444c
@@ -262,12 +264,14 @@ void SetupTSOEmulation(FEXCore::Context::Context* CTX) {
 #define PR_SET_MEM_MODEL_TSO 1
 #endif
   // Check to see if this is supported.
+  printf("checking TSO\n");
   auto Result = prctl(PR_GET_MEM_MODEL, 0, 0, 0, 0);
   if (Result == -1) {
     // Unsupported, early exit.
     return;
   }
 
+  printf("io\n");
   FEX_CONFIG_OPT(TSOEnabled, TSOENABLED);
 
   if (!TSOEnabled()) {
@@ -275,12 +279,15 @@ void SetupTSOEmulation(FEXCore::Context::Context* CTX) {
     return;
   }
 
+  printf("en\n");
   if (Result == PR_SET_MEM_MODEL_DEFAULT) {
     // Try to set the TSO mode if we are currently default.
+    printf("trying to set\n");
     Result = prctl(PR_SET_MEM_MODEL, PR_SET_MEM_MODEL_TSO, 0, 0, 0);
     if (Result == 0) {
       // TSO mode successfully enabled. Tell the context to disable TSO emulation through atomics.
       // This flag gets inherited on thread creation, so FEX only needs to set it at the start.
+      printf("hw support\n");
       CTX->SetHardwareTSOSupport(true);
     }
   }
